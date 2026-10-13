@@ -79,6 +79,7 @@ class App:
         self._running = False
         self._renaming = False
         self._closing = False
+        self._reload_final: tuple[str, dict] | None = None      # see _reload
 
         saved = _saved_options(i18n.load_settings())
         self.var_pattern = tk.StringVar(value=saved.pattern)
@@ -467,11 +468,23 @@ class App:
                 self.sources.append(p)
         self._reload()
 
-    def _reload(self) -> None:
+    def _set_final_status(self, final: tuple[str, dict] | None) -> None:
+        """What the status bar says once a read is over: the caller's own message, else 'ready'."""
+        if final is None:
+            self._set_status("status_ready")
+        else:
+            self._set_status(final[0], **final[1])
+
+    def _reload(self, final_status: tuple[str, dict] | None = None) -> None:
         """Re-read every source path. Metadata is read in a worker thread so a
-        300-file folder does not freeze the window; rows appear when done."""
+        300-file folder does not freeze the window; rows appear when done.
+
+        A plain read announces "Added: N files". With `final_status` the read is
+        only a refresh (after an undo the same files are simply read again): nothing
+        is announced as added and the status bar keeps the caller's message."""
         self.read_gen += 1
         gen = self.read_gen
+        self._reload_final = final_status
         files = meta.collect_files(self.sources, recursive=bool(self.var_recursive.get()))
         # Rows already on screen keep their state (typed names, unchecked boxes);
         # only files not seen before are read.
@@ -482,7 +495,7 @@ class App:
         self.tree.delete(*self.tree.get_children())
         self._update_count()
         if not files:
-            self._set_status("status_ready")
+            self._set_final_status(final_status)
             return
         self._set_running(True)
         self.progress.configure(maximum=len(files), value=0)
@@ -521,6 +534,7 @@ class App:
         if gen != self.read_gen or self._closing:
             return
         reused = reused or set()
+        final, self._reload_final = self._reload_final, None
         self.items = items
         self._set_running(False)
         namer.plan(self.items, self.options())
@@ -534,10 +548,10 @@ class App:
                 self.log("err_password", name=it.current)
             elif it.meta.error:
                 self.log("err_open_failed", name=it.current)
-        if new_items:
+        if new_items and final is None:
             nometa = sum(1 for it in new_items if it.status == namer.NOMETA)
             self.log("log_added", count=len(new_items), nometa=nometa)
-        self._set_status("status_ready")
+        self._set_final_status(final)
         self.progress.configure(value=0)
         self._update_count()
 
@@ -679,6 +693,9 @@ class App:
             self.log("log_saved", path=undo.log_path(folder))
         for folder in log_failed:
             self.log("err_log_failed", folder=folder)
+        if result.failed:
+            self.log("msg_failed", count=len(result.failed))
+        self.log("msg_done", count=len(result.renamed))          # the last line says how many were renamed
         namer.plan(self.items, self.options())
         for it, err in result.failed:                  # plan() resets failures; keep them visible until the next change
             it.status, it.error = namer.FAILED, err
@@ -736,6 +753,7 @@ class App:
         for path, reason in skipped:
             key = {"missing": "log_undo_missing", "error": "log_undo_error"}.get(reason, "log_undo_skipped")
             self.log(key, name=os.path.basename(path))
+        self.log("msg_undo_done", count=len(restored))           # the last line says how many were restored
         text = t("msg_undo_done", count=len(restored))
         in_use = [os.path.basename(p) for p, r in skipped if r != "missing"]
         if in_use:
@@ -743,7 +761,7 @@ class App:
         self._set_status("msg_undo_done", count=len(restored))
         messagebox.showinfo(t("btn_undo"), text, parent=self.root)
         if self.sources:
-            self._reload()
+            self._reload(final_status=("msg_undo_done", {"count": len(restored)}))   # a refresh, not new files
 
     # ------------------------------------------------------------ misc
     def _open_folder(self) -> None:

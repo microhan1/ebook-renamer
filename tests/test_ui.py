@@ -535,6 +535,64 @@ class WindowTests(unittest.TestCase):
         self.assertEqual(app.btn_log.cget("text"), self.gui.LOG_CLOSED)
         self.assertIn("1", app.txt_log.get("1.0", "end"))          # the text is kept while hidden
 
+    def log_text(self, app) -> str:
+        return app.txt_log.get("1.0", "end")
+
+    def test_log_ends_with_how_many_were_renamed_and_then_how_many_were_restored(self) -> None:
+        """After an undo the table is read again; that must not be logged as 'Added: N files'."""
+        app = self.make(1.0)
+        self.load(app)
+        self.assertEqual(self.log_text(app).count("Added:"), 1)
+        app._run()
+        self.settle(app, lambda: not app._running and not app._renaming)
+        renamed = i18n.t("msg_done", count=3)                                # a, b and d; c has no metadata
+        self.assertEqual(app.lbl_last.cget("text"), renamed)
+        self.assertEqual(self.log_text(app).strip().splitlines()[-1], renamed)
+        self.assertEqual(app.lbl_status.cget("text"), renamed)
+
+        app._undo()
+        self.settle(app, lambda: not app._running and len(app.items) == 4)
+        restored = i18n.t("msg_undo_done", count=3)
+        lines = self.log_text(app).strip().splitlines()
+        self.assertEqual(lines[-1], restored)                                # the last line is the count
+        self.assertEqual(app.lbl_last.cget("text"), restored)
+        self.assertEqual(app.lbl_status.cget("text"), restored)              # not 'Ready', not 'Reading ...'
+        self.assertEqual(self.log_text(app).count("Added:"), 1)              # the re-read is not "new files"
+        self.assertEqual([l for l in lines if l.startswith(i18n.t("msg_undo_done", count=0)[:9])], [restored])
+        self.assertTrue(all(it.status != "done" for it in app.items))        # and the rows are ready to rename again
+
+    def test_a_normal_read_is_still_announced(self) -> None:
+        app = self.make(1.0)
+        self.load(app)
+        other = os.path.join(self.work, "more")
+        os.makedirs(other)
+        make_samples.make_epub(os.path.join(other, "z.epub"), 9, "en", "Zed", ["Zoe"], None)
+        app.add_paths([other])
+        self.settle(app, lambda: not app._running and len(app.items) == 5)
+        self.assertEqual(self.log_text(app).count("Added:"), 2)
+        self.assertEqual(app.lbl_status.cget("text"), i18n.t("status_ready"))
+        self.assertIn("Added: 1 files", self.log_text(app))                  # only the new file is counted
+
+    def test_undo_that_restores_nothing_says_so(self) -> None:
+        app = self.make(1.0)
+        self.load(app)
+        app._run()
+        self.settle(app, lambda: not app._running and not app._renaming)
+        for name in os.listdir(self.work):                                  # someone re-uses the original names
+            if name.startswith("Ann - Same"):
+                shutil.copy2(os.path.join(self.work, name), os.path.join(self.work, "a.epub" if name == "Ann - Same.epub" else "b.epub"))
+        app._undo()
+        self.settle(app, lambda: not app._running and len(app.items) >= 4)
+        self.assertIn(i18n.t("msg_undo_done", count=1), self.log_text(app).strip().splitlines()[-1])
+
+    def test_summary_lines_in_every_language(self) -> None:
+        for lang in i18n.LANGS:
+            i18n.set_lang(lang, persist=False)
+            self.assertIn("3", i18n.t("msg_done", count=3))
+            self.assertIn("3", i18n.t("msg_undo_done", count=3))
+            self.assertNotEqual(i18n.t("msg_done", count=3), i18n.t("msg_undo_done", count=3))
+        i18n.set_lang("en", persist=False)
+
     def test_a_normal_message_restores_the_normal_colour(self) -> None:
         app = self.make(1.0)
         app.log("err_open_failed", name="x")
