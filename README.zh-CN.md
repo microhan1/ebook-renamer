@@ -50,9 +50,8 @@ python main.py ./books --undo
 
 ## 系列
 
-- 书签工具：[扫描PDF清晰化](https://github.com/microhan1/scan-pdf-cleanup) · [双页拆分](https://github.com/microhan1/scan-pdf-split) · [边距裁剪](https://github.com/microhan1/scan-pdf-crop)
-- 无需安装、在浏览器中使用的网页版：[跨页拆分](https://microhan1.github.io/spread-split/)
-- [书签图书馆（Chaekgalpi Library）](https://github.com/microhan1/chaekgalpi)
+- 书签工具：[扫描PDF清晰化](https://github.com/microhan1/scan-pdf-cleanup) · [双页拆分](https://github.com/microhan1/scan-pdf-split)- 无需安装、在浏览器中使用的网页版：[跨页拆分](https://microhan1.github.io/spread-split/)
+- [书签图书馆（Chaekgalpi Library）](https://chaekgalpi.co.kr/?utm_source=github&utm_medium=referral&utm_campaign=tool_cta&utm_content=ebookrenamer)
 
 ## 许可证
 

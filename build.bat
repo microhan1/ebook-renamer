@@ -9,6 +9,7 @@ python -m pip install -r requirements.txt
 
 python -m PyInstaller --noconfirm --clean --onefile --windowed ^
   --name ebook-renamer ^
+  --icon assets\icon.ico ^
   --add-data "lang;lang" ^
   --collect-data tkinterdnd2 ^
   --exclude-module numpy --exclude-module PIL --exclude-module pillow_heif --exclude-module lxml ^

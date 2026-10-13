@@ -6,15 +6,17 @@ import subprocess
 import sys
 import threading
 import tkinter as tk
-import tkinter.font as tkfont
 from tkinter import filedialog, messagebox, ttk
 
 import i18n
 import meta
 import namer
+import theme
 import undo
 from i18n import t
 from namer import Item, Options
+from version import __version__
+from widgets import DropZone, draw_empty_art
 
 try:
     from tkinterdnd2 import DND_FILES, TkinterDnD
@@ -23,17 +25,14 @@ try:
 except Exception:  # pragma: no cover - optional dependency
     _HAS_DND = False
 
-CHECKED, UNCHECKED = chr(0x2611), chr(0x2610)      # ballot box with check / ballot box
 COLUMNS = ("current", "author", "title", "new", "status")
-COLUMN_WIDTHS = {"current": 220, "author": 130, "title": 210, "new": 270, "status": 130}
+COLUMN_WIDTHS = {"current": 240, "author": 140, "title": 170, "new": 300, "status": 130}   # at 100% scale
+STATUS_MIN_WIDTH = 124                                  # the longest status text ("No metadata" in Korean/Japanese) fits
+FLEX_COLUMNS = {"current": (240, 120), "title": (170, 90), "new": (300, 160)}    # share of the spare width, smallest width
 PATTERN_DEBOUNCE_MS = 350
-TAG_COLORS = {
-    namer.DUP: {"background": "#fff3b0"},
-    namer.NOMETA: {"foreground": "#999999"},
-    namer.NOCHANGE: {"foreground": "#777777"},
-    namer.FAILED: {"foreground": "#c0392b"},
-    namer.DONE: {"foreground": "#1e7d32"},
-}
+WINDOW_SIZE = (1040, 700)
+MIN_WINDOW_SIZE = (900, 600)
+LOG_CLOSED, LOG_OPEN = chr(0x25BE), chr(0x25B4)        # small triangles: pointing down opens, up closes
 
 
 def _saved_options(settings: dict) -> Options:
@@ -52,10 +51,19 @@ def _saved_options(settings: dict) -> Options:
 
 
 class App:
-    def __init__(self, initial_paths: list[str] | None = None) -> None:
+    def __init__(self, initial_paths: list[str] | None = None, scale: float | None = None) -> None:
+        """`scale` forces the display scale (tests); normally it is read from the screen."""
+        if scale is None:
+            theme.enable_dpi_awareness()          # before the first window: crisp text instead of a stretched bitmap
         self.root = TkinterDnD.Tk() if _HAS_DND else tk.Tk()
-        self.root.geometry("1100x720")
-        self.root.minsize(860, 560)
+        self.theme = theme.Theme(self.root, scale=scale, lang=i18n.current_lang())
+        px = self.theme.px
+        # never open larger than the screen: a 1080p laptop at 150% is only 720 logical pixels tall
+        width = min(px(WINDOW_SIZE[0]), int(self.root.winfo_screenwidth() * 0.94))
+        height = min(px(WINDOW_SIZE[1]), int(self.root.winfo_screenheight() * 0.88))
+        self.root.geometry(f"{width}x{height}")
+        self.root.minsize(min(px(MIN_WINDOW_SIZE[0]), width), min(px(MIN_WINDOW_SIZE[1]), height))
+        self.root.iconphoto(True, *self.theme.app_icons())
 
         self.items: list[Item] = []
         self.sources: list[str] = []            # what the user dropped; re-read on option change
@@ -80,9 +88,20 @@ class App:
 
         self._build()
         self._apply_texts()
+        self._center()
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
         if initial_paths:
             self.root.after(100, lambda: self.add_paths(initial_paths))
+
+    def _center(self) -> None:
+        root = self.root
+        root.update_idletasks()
+        width, height = root.winfo_width(), root.winfo_height()
+        if width < 50 or height < 50:
+            return
+        x = max(0, (root.winfo_screenwidth() - width) // 2)
+        y = max(0, (root.winfo_screenheight() - height) // 3)
+        root.geometry(f"+{x}+{y}")
 
     # ------------------------------------------------------------ building
     def _reg(self, widget: tk.Misc, key: str, attr: str = "text") -> tk.Misc:
@@ -90,109 +109,155 @@ class App:
         return widget
 
     def _build(self) -> None:
-        root = self.root
+        root, th = self.root, self.theme
+        p, px = th.p, th.px
+        pad = px(24)
         root.columnconfigure(0, weight=1)
         root.rowconfigure(3, weight=1)
+        self.checkbox = th.checkbox_images()
 
-        # ---- header
-        head = ttk.Frame(root, padding=(12, 10, 12, 4))
+        # ---- header: logo, title, language
+        head = ttk.Frame(root, padding=(pad, px(16), pad, px(2)))
         head.grid(row=0, column=0, sticky="ew")
-        head.columnconfigure(0, weight=1)
-        family = tkfont.nametofont("TkDefaultFont").actual("family")   # the UI font, not a serif fallback
-        self._reg(ttk.Label(head, font=(family, 15, "bold")), "app_title").grid(row=0, column=0, sticky="w")
-        self._reg(ttk.Label(head), "lbl_language").grid(row=0, column=1, padx=(0, 6))
-        self.cmb_lang = ttk.Combobox(head, state="readonly", width=10, textvariable=self.var_lang,
+        head.columnconfigure(1, weight=1)
+        self.logo = ttk.Label(head, image=th.logo())
+        self.logo.grid(row=0, column=0, rowspan=2, padx=(0, px(14)))
+        self._reg(ttk.Label(head, style="Title.TLabel"), "app_title").grid(row=0, column=1, sticky="sw")
+        self.lbl_subtitle = ttk.Label(head, style="Sub.TLabel")
+        self._reg(self.lbl_subtitle, "app_subtitle")
+        self.lbl_subtitle.grid(row=1, column=1, sticky="nw")
+        side = ttk.Frame(head)
+        side.grid(row=0, column=2, rowspan=2, sticky="e")
+        self.lbl_version = ttk.Label(side, text=f"v{__version__}", style="Small.TLabel")
+        self.lbl_version.grid(row=0, column=0, padx=(0, px(16)))
+        self._reg(ttk.Label(side, style="Small.TLabel"), "lbl_language").grid(row=0, column=1, padx=(0, px(6)))
+        self.cmb_lang = ttk.Combobox(side, state="readonly", width=9, textvariable=self.var_lang,
                                      values=[i18n.LANG_NAMES[c] for c in i18n.LANGS])
         self.cmb_lang.grid(row=0, column=2)
         self.cmb_lang.bind("<<ComboboxSelected>>", self._on_lang)
 
-        # ---- drop area + file buttons
-        top = ttk.Frame(root, padding=(12, 4))
-        top.grid(row=1, column=0, sticky="ew")
-        top.columnconfigure(0, weight=1)
-        self.lbl_drop = ttk.Label(top, anchor="center", relief="groove", padding=10, foreground="#555")
-        self._reg(self.lbl_drop, "drop_hint")
-        self.lbl_drop.grid(row=0, column=0, sticky="ew")
-        btns = ttk.Frame(top)
-        btns.grid(row=0, column=1, padx=(8, 0))
+        # ---- drop zone with the add / clear buttons inside
+        zone_row = ttk.Frame(root, padding=(pad, px(12), pad, 0))
+        zone_row.grid(row=1, column=0, sticky="ew")
+        zone_row.columnconfigure(0, weight=1)
+        self.zone = DropZone(zone_row, th, height=84)
+        self.zone.grid(row=0, column=0, sticky="ew")
+        self.lbl_drop = self.zone
+        btns = tk.Frame(self.zone, bg=p["card"])
         self.btn_add = self._reg(ttk.Button(btns, command=self._add_files_dialog), "btn_add_files")
         self.btn_add.pack(side="left")
         self.btn_add_dir = self._reg(ttk.Button(btns, command=self._add_folder_dialog), "btn_add_folder")
-        self.btn_add_dir.pack(side="left", padx=4)
+        self.btn_add_dir.pack(side="left", padx=px(8))
         self.btn_clear = self._reg(ttk.Button(btns, command=self.clear), "btn_clear")
         self.btn_clear.pack(side="left")
+        self.zone.attach_buttons(btns)
 
-        # ---- options
-        opts = ttk.Frame(root, padding=(12, 4))
-        opts.grid(row=2, column=0, sticky="ew")
+        # ---- options card (one row)
+        opts_row = ttk.Frame(root, padding=(pad, px(12), pad, 0))
+        opts_row.grid(row=2, column=0, sticky="ew")
+        opts_row.columnconfigure(0, weight=1)
+        self.opts_card = th.card(opts_row)
+        self.opts_card.grid(row=0, column=0, sticky="ew")
+        self.opts_card.columnconfigure(0, weight=1)
+        opts = ttk.Frame(self.opts_card, style="Card.TFrame", padding=(px(18), px(10), px(10), px(10)))
+        opts.grid(row=0, column=0, sticky="ew")
         opts.columnconfigure(5, weight=1)
-        self._reg(ttk.Label(opts), "pattern_label").grid(row=0, column=0, padx=(0, 6))
-        self.cmb_pattern = ttk.Combobox(opts, width=28, textvariable=self.var_pattern, values=list(namer.PRESETS))
+        self._reg(ttk.Label(opts, style="Card.TLabel"), "pattern_label").grid(row=0, column=0, padx=(0, px(10)))
+        self.cmb_pattern = ttk.Combobox(opts, width=22, textvariable=self.var_pattern, values=list(namer.PRESETS))
         self.cmb_pattern.grid(row=0, column=1)
         self.cmb_pattern.bind("<<ComboboxSelected>>", lambda e: self._schedule_replan())
         self.cmb_pattern.bind("<KeyRelease>", lambda e: self._schedule_replan())
-        self.chk_recursive = self._reg(ttk.Checkbutton(opts, variable=self.var_recursive,
+        self.chk_recursive = self._reg(ttk.Checkbutton(opts, style="Card.TCheckbutton", variable=self.var_recursive,
                                                        command=self._on_recursive), "opt_recursive")
-        self.chk_recursive.grid(row=0, column=2, padx=(16, 0))
-        self.chk_others = self._reg(ttk.Checkbutton(opts, variable=self.var_others,
+        self.chk_recursive.grid(row=0, column=2, padx=(px(16), 0))
+        self.chk_others = self._reg(ttk.Checkbutton(opts, style="Card.TCheckbutton", variable=self.var_others,
                                                     command=self._replan), "opt_others")
-        self.chk_others.grid(row=0, column=3, padx=(16, 0))
-        self.btn_toggle = self._reg(ttk.Button(opts, command=self._toggle_all), "btn_toggle_all")
+        self.chk_others.grid(row=0, column=3, padx=(px(12), 0))
+        self.btn_toggle = self._reg(ttk.Button(opts, style="Link.TButton", command=self._toggle_all), "btn_toggle_all")
         self.btn_toggle.grid(row=0, column=6, sticky="e")
-        self.lbl_hint = ttk.Label(opts, foreground="#666")
-        self._reg(self.lbl_hint, "hint_edit")
-        self.lbl_hint.grid(row=1, column=0, columnspan=7, sticky="w", pady=(4, 0))
-        opts.bind("<Configure>", lambda e: self.lbl_hint.configure(wraplength=max(300, e.width - 24)))
 
-        # ---- table
-        tbl = ttk.Frame(root, padding=(12, 4))
-        tbl.grid(row=3, column=0, sticky="nsew")
-        tbl.columnconfigure(0, weight=1)
-        tbl.rowconfigure(0, weight=1)
-        self.tree = ttk.Treeview(tbl, columns=COLUMNS, selectmode="browse")
+        # ---- table card with its hint underneath
+        table_row = ttk.Frame(root, padding=(pad, px(12), pad, 0))
+        table_row.grid(row=3, column=0, sticky="nsew")
+        table_row.columnconfigure(0, weight=1)
+        table_row.rowconfigure(0, weight=1)
+        self.table_card = th.card(table_row)
+        self.table_card.grid(row=0, column=0, sticky="nsew")
+        self.table_card.columnconfigure(0, weight=1)
+        self.table_card.rowconfigure(0, weight=1)
+        self.tree = ttk.Treeview(self.table_card, columns=COLUMNS, selectmode="browse")
         self.tree.grid(row=0, column=0, sticky="nsew")
-        sb = ttk.Scrollbar(tbl, command=self.tree.yview)
+        sb = ttk.Scrollbar(self.table_card, style="Modern.Vertical.TScrollbar", command=self.tree.yview)
         sb.grid(row=0, column=1, sticky="ns")
         self.tree.configure(yscrollcommand=sb.set)
-        self.tree.column("#0", width=60, minwidth=50, stretch=False, anchor="center")
-        for col in COLUMNS:
-            self.tree.column(col, width=COLUMN_WIDTHS[col], minwidth=110 if col == "status" else 60,
-                             stretch=(col in ("current", "title", "new")))
-        for code, style in TAG_COLORS.items():
-            self.tree.tag_configure(code, **style)
+        self.tree.column("#0", width=px(64), minwidth=px(56), stretch=False, anchor="center")
+        for col in COLUMNS:                     # widths are set by _fit_columns whenever the table is resized
+            self.tree.column(col, width=px(COLUMN_WIDTHS[col]), minwidth=px(STATUS_MIN_WIDTH if col == "status" else 70),
+                             stretch=False, anchor="w")
+        self.tree.bind("<Configure>", self._fit_columns)
+        th.row_tags(self.tree)
         self.tree.bind("<Button-1>", self._on_tree_click)
         self.tree.bind("<Double-1>", self._on_tree_double)
         self.tree.bind("<space>", self._on_space)
+        tk.Frame(self.table_card, height=1, bg=p["border"]).grid(row=1, column=0, columnspan=2, sticky="ew")
+        self.lbl_hint = ttk.Label(self.table_card, style="CardMuted.TLabel")
+        self._reg(self.lbl_hint, "hint_edit")
+        self.lbl_hint.grid(row=2, column=0, columnspan=2, sticky="w", padx=px(16), pady=px(8))
+        self.table_card.bind("<Configure>", lambda e: self.lbl_hint.configure(wraplength=max(300, e.width - px(32))))
+        self.empty = tk.Frame(self.table_card, bg=p["card"])           # shown while the table has no rows
+        draw_empty_art(tk.Canvas(self.empty, width=px(84), height=px(64), bg=p["card"], highlightthickness=0),
+                       th).pack(pady=(0, px(10)))
+        self.lbl_empty = ttk.Label(self.empty, style="CardLead.TLabel")
+        self.lbl_empty.pack()
         if _HAS_DND:
-            for w in (root, self.lbl_drop, self.tree):
+            for w in (root, self.zone, self.tree, self.empty):
                 w.drop_target_register(DND_FILES)
                 w.dnd_bind("<<Drop>>", self._on_drop)
+                w.dnd_bind("<<DropEnter>>", self._on_drop_enter)
+                w.dnd_bind("<<DropLeave>>", self._on_drop_leave)
 
-        # ---- log
-        logf = self._reg(ttk.LabelFrame(root, padding=4), "lbl_log")
-        logf.grid(row=4, column=0, sticky="ew", padx=12, pady=4)
-        logf.columnconfigure(0, weight=1)
-        self.txt_log = tk.Text(logf, height=4, state="disabled", wrap="none")
+        # ---- log card: one line with the latest message, opens to the full log
+        log_row = ttk.Frame(root, padding=(pad, px(12), pad, 0))
+        log_row.grid(row=4, column=0, sticky="ew")
+        log_row.columnconfigure(0, weight=1)
+        self.log_card = th.card(log_row)
+        self.log_card.grid(row=0, column=0, sticky="ew")
+        self.log_card.columnconfigure(0, weight=1)
+        log_head = ttk.Frame(self.log_card, style="Card.TFrame", padding=(px(16), px(4), px(6), px(4)))
+        log_head.grid(row=0, column=0, sticky="ew")
+        log_head.columnconfigure(1, weight=1)
+        self._reg(ttk.Label(log_head, style="CardMuted.TLabel"), "lbl_log").grid(row=0, column=0, padx=(0, px(14)))
+        self.lbl_last = ttk.Label(log_head, style="Card.TLabel", anchor="w", width=10)
+        self.lbl_last.grid(row=0, column=1, sticky="ew")
+        self.btn_log = ttk.Button(log_head, style="Toggle.TButton", command=self._toggle_log, text=LOG_CLOSED)
+        self.btn_log.grid(row=0, column=2)
+        self.log_open = False
+        self.log_body = tk.Frame(self.log_card, bg=p["card"])
+        self.log_body.columnconfigure(0, weight=1)
+        self.txt_log = tk.Text(self.log_body, height=5, state="disabled", wrap="none")
+        th.style_text(self.txt_log)
         self.txt_log.grid(row=0, column=0, sticky="ew")
-        lsb = ttk.Scrollbar(logf, command=self.txt_log.yview)
+        lsb = ttk.Scrollbar(self.log_body, style="Modern.Vertical.TScrollbar", command=self.txt_log.yview)
         lsb.grid(row=0, column=1, sticky="ns")
         self.txt_log.configure(yscrollcommand=lsb.set)
+        self.log_body.grid(row=1, column=0, sticky="ew")
+        self.log_body.grid_remove()
 
-        # ---- bottom
-        bot = ttk.Frame(root, padding=(12, 4, 12, 10))
+        # ---- bottom bar: progress, status, summary, actions
+        bot = ttk.Frame(root, padding=(pad, px(12), pad, px(18)))
         bot.grid(row=5, column=0, sticky="ew")
         bot.columnconfigure(1, weight=1)
-        self.progress = ttk.Progressbar(bot, mode="determinate")
-        self.progress.grid(row=0, column=0, columnspan=5, sticky="ew", pady=(0, 6))
-        self.lbl_status = ttk.Label(bot, anchor="w")
+        self.progress = ttk.Progressbar(bot, mode="determinate", style="Idle.Horizontal.TProgressbar")
+        self.progress.grid(row=0, column=0, columnspan=5, sticky="ew", pady=(0, px(8)))
+        self.lbl_status = ttk.Label(bot, style="Status.TLabel", anchor="w")
         self.lbl_status.grid(row=1, column=0, sticky="w")
-        self.lbl_count = ttk.Label(bot, anchor="e", foreground="#555")
-        self.lbl_count.grid(row=1, column=1, sticky="e", padx=(0, 12))
-        self.btn_open = self._reg(ttk.Button(bot, command=self._open_folder), "btn_open_folder")
-        self.btn_open.grid(row=1, column=2, padx=(0, 6))
+        self.lbl_count = ttk.Label(bot, style="Pill.TLabel", anchor="e")
+        self.lbl_count.grid(row=1, column=1, sticky="e", padx=(0, px(16)))
+        self.btn_open = self._reg(ttk.Button(bot, style="Ghost.TButton", command=self._open_folder), "btn_open_folder")
+        self.btn_open.grid(row=1, column=2, padx=(0, px(8)))
         self.btn_undo = self._reg(ttk.Button(bot, command=self._undo), "btn_undo")
-        self.btn_undo.grid(row=1, column=3, padx=(0, 6))
-        self.btn_run = self._reg(ttk.Button(bot, command=self._run), "btn_run")
+        self.btn_undo.grid(row=1, column=3, padx=(0, px(10)))
+        self.btn_run = self._reg(ttk.Button(bot, style="Accent.TButton", command=self._run), "btn_run")
         self.btn_run.grid(row=1, column=4)
 
     def _apply_texts(self) -> None:
@@ -202,13 +267,42 @@ class App:
                 widget.configure(**{attr: t(key)})
             except tk.TclError:
                 pass
-        self.tree.heading("#0", text=t("col_select"))
+        self.tree.heading("#0", text=t("col_select"), anchor="center")
         for col in COLUMNS:
-            self.tree.heading(col, text=t(f"col_{col}"))
+            self.tree.heading(col, text=t(f"col_{col}"), anchor="w")
+        self.zone.set_text(t("drop_hint"), t("drop_sub"), t("drop_release"))
+        self.lbl_empty.configure(text=t("empty_table"))
         self._refresh_rows()
         self._update_count()
         if self._status_key:
             self._set_status(self._status_key, **self._status_kwargs)
+
+    def _fit_columns(self, event=None) -> None:
+        """Share the table's width out between the columns. A Treeview never shrinks
+        its columns, so with fixed widths the last one (the status) was cut off
+        whenever the window was narrower than their sum."""
+        px = self.theme.px
+        width = event.width if event is not None else self.tree.winfo_width()
+        if width < px(300):
+            return
+        fixed = {"#0": px(64), "author": px(COLUMN_WIDTHS["author"]), "status": px(COLUMN_WIDTHS["status"])}
+        spare = width - sum(fixed.values()) - px(2)
+        weight_total = sum(weight for weight, _ in FLEX_COLUMNS.values())
+        sizes = dict(fixed)
+        for col, (weight, smallest) in FLEX_COLUMNS.items():
+            sizes[col] = max(px(smallest), int(spare * weight / weight_total))
+        for col, size in sizes.items():
+            if int(self.tree.column(col, "width")) != size:
+                self.tree.column(col, width=size)
+
+    def _toggle_log(self, show: bool | None = None) -> None:
+        self.log_open = (not self.log_open) if show is None else bool(show)
+        if self.log_open:
+            self.log_body.grid()
+            self.txt_log.see("end")
+        else:
+            self.log_body.grid_remove()
+        self.btn_log.configure(text=LOG_OPEN if self.log_open else LOG_CLOSED)
 
     # ------------------------------------------------------------ helpers
     def _set_status(self, key: str, **kwargs) -> None:
@@ -216,10 +310,15 @@ class App:
         self.lbl_status.configure(text=t(key, **kwargs) if key else "")
 
     def log(self, key: str, **kwargs) -> None:
+        text = t(key, **kwargs)
         self.txt_log.configure(state="normal")
-        self.txt_log.insert("end", t(key, **kwargs) + "\n")
+        self.txt_log.insert("end", text + "\n")
         self.txt_log.see("end")
         self.txt_log.configure(state="disabled")
+        problem = key.startswith("err_") or key == "log_undo_error"
+        self.lbl_last.configure(text=text, style="CardBad.TLabel" if problem else "Card.TLabel")
+        if key in ("err_rename_failed", "err_log_failed"):
+            self._toggle_log(True)                # a failed rename must never stay hidden behind a closed panel
 
     def options(self) -> Options:
         return Options(pattern=self.var_pattern.get(), recursive=bool(self.var_recursive.get()),
@@ -239,11 +338,14 @@ class App:
             w.configure(state=state)
         self.cmb_pattern.configure(state="disabled" if running else "normal")
         self.cmb_lang.configure(state="disabled" if running else "readonly")
+        self.progress.configure(style="Thin.Horizontal.TProgressbar" if running else "Idle.Horizontal.TProgressbar")
+        self._sync_empty()
 
     def _on_lang(self, _event=None) -> None:
         index = self.cmb_lang.current()
         if index >= 0:
             i18n.set_lang(i18n.LANGS[index])
+        self.theme.set_language(i18n.current_lang())      # each language reads best in its own system font
         self._replan()
         self._apply_texts()
 
@@ -251,21 +353,39 @@ class App:
     def _row_values(self, it: Item) -> tuple:
         return (it.current, it.meta.author, it.meta.title, it.new_name, t(f"status_{it.status}"))
 
-    def _refresh_row(self, iid: str) -> None:
+    def _refresh_row(self, iid: str, position: int | None = None) -> None:
         it = self.iid_to_item[iid]
-        tags = (it.status,) if it.status in TAG_COLORS else ()
-        self.tree.item(iid, text=CHECKED if it.selected else UNCHECKED, values=self._row_values(it), tags=tags)
+        if position is None:
+            position = self.tree.index(iid)
+        parity = "odd" if position % 2 else "even"
+        self.tree.item(iid, text="", image=self.checkbox[bool(it.selected)], values=self._row_values(it),
+                       tags=(f"{it.status}_{parity}",))
 
     def _refresh_rows(self) -> None:
-        for iid in self.iid_to_item:
-            self._refresh_row(iid)
+        for position, iid in enumerate(self.tree.get_children()):
+            if iid in self.iid_to_item:
+                self._refresh_row(iid, position)
 
     def _update_count(self) -> None:
         total = len(self.items)
         selected = sum(1 for it in self.items if it.selected)
         change = sum(1 for it in self.items
                      if it.selected and it.new_name and it.status in (namer.OK, namer.DUP, namer.FAILED))
-        self.lbl_count.configure(text=t("status_count", total=total, selected=selected, change=change) if total else "")
+        if total:
+            self.lbl_count.configure(text=t("status_count", total=total, selected=selected, change=change))
+            self.lbl_count.grid()
+        else:
+            self.lbl_count.configure(text="")
+            self.lbl_count.grid_remove()
+        self._sync_empty()
+
+    def _sync_empty(self) -> None:
+        """The hint in the middle of the empty table card."""
+        if self.items or self._running:
+            self.empty.place_forget()
+        else:
+            self.empty.place(relx=0.5, rely=0.6, anchor="center")
+            self.empty.lift()
 
     def _replan(self) -> None:
         if self._running:
@@ -299,10 +419,21 @@ class App:
         self._replan()
 
     # ------------------------------------------------------------ adding files
-    def _on_drop(self, event) -> None:
+    def _on_drop_enter(self, event):
+        if not self._running:
+            self.zone.set_active(True)
+        return event.action
+
+    def _on_drop_leave(self, event):
+        self.zone.set_active(False)
+        return event.action
+
+    def _on_drop(self, event):
+        self.zone.set_active(False)
         if self._running:
-            return
+            return event.action
         self.add_paths(list(self.root.tk.splitlist(event.data)))
+        return event.action
 
     def _add_files_dialog(self) -> None:
         paths = filedialog.askopenfilenames(filetypes=[(t("file_dialog_ebook"), "*.epub *.pdf *.EPUB *.PDF")])
@@ -394,10 +525,10 @@ class App:
         self._set_running(False)
         namer.plan(self.items, self.options())
         new_items = [it for it in self.items if id(it) not in reused]
-        for it in self.items:
+        for position, it in enumerate(self.items):
             iid = self.tree.insert("", "end", text="", values=self._row_values(it))
             self.iid_to_item[iid] = it
-            self._refresh_row(iid)
+            self._refresh_row(iid, position)
         for it in new_items:
             if it.meta.error == "password":
                 self.log("err_password", name=it.current)
@@ -463,6 +594,7 @@ class App:
         it = self.iid_to_item[iid]
         self._edit_iid = iid
         self._editor = tk.Entry(self.tree)
+        self.theme.style_entry(self._editor)
         self._editor.insert(0, it.new_name or it.current)
         self._editor.select_range(0, "end")
         self._editor.place(x=x, y=y, width=w, height=h)

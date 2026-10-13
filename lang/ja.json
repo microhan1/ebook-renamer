@@ -1,6 +1,10 @@
 {
   "app_title": "電子書籍ファイル名整理",
+  "app_subtitle": "メタデータで電子書籍のファイル名を一括整理。プレビューと元に戻す操作に対応",
   "drop_hint": "フォルダまたは EPUB・PDF ファイルをここにドロップ",
+  "drop_sub": "フォルダをドロップすると、中の EPUB・PDF をすべて読み込みます",
+  "drop_release": "ここで離すと追加されます",
+  "empty_table": "ファイルを追加すると、ここに一覧が表示されます",
   "lbl_language": "言語",
   "btn_add_files": "ファイル追加",
   "btn_add_folder": "フォルダ追加",
@@ -65,6 +69,7 @@
   "cli_yes": "すべての確認に「はい」と答える",
   "cli_lang": "言語 (ko, en, zh-CN, ja)",
   "cli_gui": "GUI を開く",
+  "cli_version": "バージョンを表示して終了",
   "cli_usage": "使い方: ",
   "cli_positional": "入力",
   "cli_options": "オプション",

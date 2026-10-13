@@ -1,6 +1,10 @@
 {
   "app_title": "Ebook Renamer",
+  "app_subtitle": "Rename ebooks from their metadata, with preview and undo",
   "drop_hint": "Drop a folder or EPUB/PDF files here",
+  "drop_sub": "Drop a folder to read every EPUB and PDF inside",
+  "drop_release": "Release to add",
+  "empty_table": "Your files will appear here",
   "lbl_language": "Language",
   "btn_add_files": "Add files",
   "btn_add_folder": "Add folder",
@@ -65,6 +69,7 @@
   "cli_yes": "Answer yes to all confirmations",
   "cli_lang": "Language (ko, en, zh-CN, ja)",
   "cli_gui": "Open the GUI",
+  "cli_version": "show the version number and exit",
   "cli_usage": "usage: ",
   "cli_positional": "inputs",
   "cli_options": "options",

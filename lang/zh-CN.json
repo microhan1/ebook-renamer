@@ -1,6 +1,10 @@
 {
   "app_title": "电子书文件重命名",
+  "app_subtitle": "根据元数据批量整理电子书文件名，可预览、可撤销",
   "drop_hint": "将文件夹或 EPUB/PDF 文件拖放到此处",
+  "drop_sub": "拖入文件夹即可读取其中的所有 EPUB/PDF",
+  "drop_release": "松开即可添加",
+  "empty_table": "添加文件后将在此处显示",
   "lbl_language": "语言",
   "btn_add_files": "添加文件",
   "btn_add_folder": "添加文件夹",
@@ -65,6 +69,7 @@
   "cli_yes": "所有确认均回答是",
   "cli_lang": "语言（ko, en, zh-CN, ja）",
   "cli_gui": "打开图形界面",
+  "cli_version": "显示版本号并退出",
   "cli_usage": "用法：",
   "cli_positional": "输入",
   "cli_options": "选项",

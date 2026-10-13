@@ -15,6 +15,7 @@ import meta
 import namer
 import undo
 from i18n import t
+from version import __version__
 
 
 def _preselect_lang(argv: list[str]) -> str | None:
@@ -50,6 +51,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("-y", "--yes", action="store_true", help=t("cli_yes"))
     p.add_argument("--lang", choices=i18n.LANGS, help=t("cli_lang"))
     p.add_argument("--gui", action="store_true", help=t("cli_gui"))
+    p.add_argument("--version", action="version", version=f"ebook-renamer {__version__}", help=t("cli_version"))
     return p
 
 

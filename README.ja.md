@@ -50,9 +50,8 @@ python main.py ./books --undo
 
 ## シリーズ
 
-- しおりツール：[スキャンPDF補正](https://github.com/microhan1/scan-pdf-cleanup) · [見開き分割](https://github.com/microhan1/scan-pdf-split) · [余白カット](https://github.com/microhan1/scan-pdf-crop)
-- インストール不要、ブラウザーで使える Web 版：[見開き分割](https://microhan1.github.io/spread-split/)
-- [しおりライブラリ（Chaekgalpi Library）](https://github.com/microhan1/chaekgalpi)
+- しおりツール：[スキャンPDF補正](https://github.com/microhan1/scan-pdf-cleanup) · [見開き分割](https://github.com/microhan1/scan-pdf-split)- インストール不要、ブラウザーで使える Web 版：[見開き分割](https://microhan1.github.io/spread-split/)
+- [しおりライブラリ（Chaekgalpi Library）](https://chaekgalpi.co.kr/?utm_source=github&utm_medium=referral&utm_campaign=tool_cta&utm_content=ebookrenamer)
 
 ## ライセンス
 

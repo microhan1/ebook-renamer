@@ -50,9 +50,8 @@ python main.py ./books --undo
 
 ## Series
 
-- Chaekgalpi Tools: [Scan PDF Cleanup](https://github.com/microhan1/scan-pdf-cleanup) · [Two-page Split](https://github.com/microhan1/scan-pdf-split) · [Margin Crop](https://github.com/microhan1/scan-pdf-crop)
-- Browser version, nothing to install: [Spread Split](https://microhan1.github.io/spread-split/)
-- [Chaekgalpi Library](https://github.com/microhan1/chaekgalpi)
+- Chaekgalpi Tools: [Scan PDF Cleanup](https://github.com/microhan1/scan-pdf-cleanup) · [Two-page Split](https://github.com/microhan1/scan-pdf-split)- Browser version, nothing to install: [Spread Split](https://microhan1.github.io/spread-split/)
+- [Chaekgalpi Library](https://chaekgalpi.co.kr/?utm_source=github&utm_medium=referral&utm_campaign=tool_cta&utm_content=ebookrenamer)
 
 ## License
 
