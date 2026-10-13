@@ -21,7 +21,7 @@ python main.py
 ## 使い方
 
 1. フォルダまたは EPUB・PDF ファイルをウィンドウにドロップします。
-2. 表で新しい名前を確認します。命名ルール（`{author} - {title}`、`{title} - {author}`、`{title}`、または `{author}` `{title}` `{year}` で自由入力）を変えたり、チェックを外して除外したり、「新しい名前」のセルをダブルクリックして手で直せます。
+2. 表で新しい名前を確認します。命名ルール（`{author} - {title}`、`{title} - {author}`、`{title}`、または `{author}` `{title}` `{year}` で自由入力）を変えたり、チェックを外して除外したり、「新しい名前」のセルをダブルクリックして直接編集できます。
 3. **名前を変更**を押します。名前だけが変わり、ファイルは同じ場所に残ります。
 
 - タイトルも著者もないファイルは灰色で表示され、既定で除外されます。名前を入力すると対象になります。
@@ -50,7 +50,7 @@ python main.py ./books --undo
 
 ## シリーズ
 
-- しおりツール：[スキャンPDF補正](https://github.com/microhan1/scan-pdf-cleanup) · [2ページ分割](https://github.com/microhan1/scan-pdf-split) · [余白カット](https://github.com/microhan1/scan-pdf-crop)
+- しおりツール：[スキャンPDF補正](https://github.com/microhan1/scan-pdf-cleanup) · [見開き分割](https://github.com/microhan1/scan-pdf-split) · [余白カット](https://github.com/microhan1/scan-pdf-crop)
 - インストール不要、ブラウザーで使える Web 版：[見開き分割](https://microhan1.github.io/spread-split/)
 - [しおりライブラリ（Chaekgalpi Library）](https://github.com/microhan1/chaekgalpi)
 
