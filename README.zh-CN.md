@@ -10,7 +10,7 @@
 
 ## 下载
 
-- **可执行文件**：在 [Releases](https://github.com/microhan1/ebook-renamer/releases) 下载 `ebook-renamer.exe` 并双击运行，无需安装。exe 未签名，若 SmartScreen 弹出警告，请选择"更多信息 → 仍要运行"。
+- **可执行文件**：在[最新发布](https://github.com/microhan1/ebook-renamer/releases/latest)下载 `ebook-renamer.exe`，或点击[直接下载](https://github.com/microhan1/ebook-renamer/releases/latest/download/ebook-renamer.exe)，然后双击运行，无需安装。exe 未签名，若 SmartScreen 弹出警告，请选择"更多信息 → 仍要运行"。
 - **从源码运行**：
 
 ```bash

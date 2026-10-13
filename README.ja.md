@@ -10,7 +10,7 @@
 
 ## ダウンロード
 
-- **実行ファイル**：[Releases](https://github.com/microhan1/ebook-renamer/releases) から `ebook-renamer.exe` をダウンロードしてダブルクリック。インストール不要です。exe は未署名のため SmartScreen の警告が出たら「詳細情報 → 実行」を選んでください。
+- **実行ファイル**：[最新リリース](https://github.com/microhan1/ebook-renamer/releases/latest)から `ebook-renamer.exe` をダウンロードするか、[直接ダウンロード](https://github.com/microhan1/ebook-renamer/releases/latest/download/ebook-renamer.exe)してダブルクリック。インストール不要です。exe は未署名のため SmartScreen の警告が出たら「詳細情報 → 実行」を選んでください。
 - **ソースから実行**：
 
 ```bash

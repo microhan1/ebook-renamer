@@ -10,7 +10,7 @@
 
 ## 다운로드
 
-- **실행 파일**: [Releases](https://github.com/microhan1/ebook-renamer/releases)에서 `ebook-renamer.exe`를 받아 더블클릭. 설치 없이 바로 실행됩니다. 서명이 없어 SmartScreen 경고가 뜨면 "추가 정보 → 실행"을 누르세요.
+- **실행 파일**: [최신 릴리스](https://github.com/microhan1/ebook-renamer/releases/latest)에서 `ebook-renamer.exe`를 받거나 [바로 받기](https://github.com/microhan1/ebook-renamer/releases/latest/download/ebook-renamer.exe)를 눌러 더블클릭. 설치 없이 바로 실행됩니다. 서명이 없어 SmartScreen 경고가 뜨면 "추가 정보 → 실행"을 누르세요.
 - **소스 실행**:
 
 ```bash

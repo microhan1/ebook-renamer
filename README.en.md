@@ -10,7 +10,7 @@ Reads the title and author embedded in EPUB and PDF files in a folder and rename
 
 ## Download
 
-- **Executable**: grab `ebook-renamer.exe` from [Releases](https://github.com/microhan1/ebook-renamer/releases) and double-click it. Nothing to install. The exe is unsigned; if SmartScreen warns, choose "More info → Run anyway".
+- **Executable**: grab `ebook-renamer.exe` from the [latest release](https://github.com/microhan1/ebook-renamer/releases/latest) or use the [direct download](https://github.com/microhan1/ebook-renamer/releases/latest/download/ebook-renamer.exe), then double-click it. Nothing to install. The exe is unsigned; if SmartScreen warns, choose "More info → Run anyway".
 - **Run from source**:
 
 ```bash
