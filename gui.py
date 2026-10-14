@@ -6,6 +6,7 @@ import subprocess
 import sys
 import threading
 import tkinter as tk
+import webbrowser
 from tkinter import filedialog, messagebox, ttk
 
 import i18n
@@ -13,6 +14,7 @@ import meta
 import namer
 import theme
 import undo
+import update_check
 from i18n import t
 from namer import Item, Options
 from version import __version__
@@ -51,8 +53,10 @@ def _saved_options(settings: dict) -> Options:
 
 
 class App:
-    def __init__(self, initial_paths: list[str] | None = None, scale: float | None = None) -> None:
-        """`scale` forces the display scale (tests); normally it is read from the screen."""
+    def __init__(self, initial_paths: list[str] | None = None, scale: float | None = None,
+                 check_updates: bool = True) -> None:
+        """`scale` forces the display scale (tests); normally it is read from the screen.
+        `check_updates` is False in tests that must never start the once-a-day version check."""
         if scale is None:
             theme.enable_dpi_awareness()          # before the first window: crisp text instead of a stretched bitmap
         self.root = TkinterDnD.Tk() if _HAS_DND else tk.Tk()
@@ -81,7 +85,11 @@ class App:
         self._closing = False
         self._reload_final: tuple[str, dict] | None = None      # see _reload
 
-        saved = _saved_options(i18n.load_settings())
+        settings = i18n.load_settings()
+        self.update_prefs = update_check.load_prefs(settings)
+        self.var_update_check = tk.BooleanVar(value=self.update_prefs.update_check)
+        self._update_info: update_check.UpdateInfo | None = None
+        saved = _saved_options(settings)
         self.var_pattern = tk.StringVar(value=saved.pattern)
         self.var_recursive = tk.BooleanVar(value=saved.recursive)
         self.var_others = tk.BooleanVar(value=saved.others)
@@ -91,6 +99,11 @@ class App:
         self._apply_texts()
         self._center()
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
+        if check_updates:
+            # once a day, 1.5 s after the window is up, on a background thread; silent on any failure.
+            # update_check.fetch is looked up at call time so tests can replace it.
+            update_check.check_async(self.root, update_check.SLUG, __version__, self.update_prefs,
+                                     self._on_update_result, fetcher=lambda s, v: update_check.fetch(s, v))
         if initial_paths:
             self.root.after(100, lambda: self.add_paths(initial_paths))
 
@@ -136,6 +149,9 @@ class App:
                                      values=[i18n.LANG_NAMES[c] for c in i18n.LANGS])
         self.cmb_lang.grid(row=0, column=2)
         self.cmb_lang.bind("<<ComboboxSelected>>", self._on_lang)
+        self.chk_update = self._reg(ttk.Checkbutton(side, style="Plain.TCheckbutton", variable=self.var_update_check,
+                                                    command=self._on_update_toggle), "opt_update_check")
+        self.chk_update.grid(row=0, column=3, padx=(px(14), 0))
 
         # ---- drop zone with the add / clear buttons inside
         zone_row = ttk.Frame(root, padding=(pad, px(12), pad, 0))
@@ -261,6 +277,17 @@ class App:
         self.btn_run = self._reg(ttk.Button(bot, style="Accent.TButton", command=self._run), "btn_run")
         self.btn_run.grid(row=1, column=4)
 
+        # ---- one-line "new version" notice under the bottom bar (gridded only while there is one)
+        self.notice = tk.Frame(root, bg=p["accent_soft"], highlightthickness=1, highlightbackground=p["select"])
+        self.lbl_notice = ttk.Label(self.notice, style="Notice.TLabel", anchor="w")
+        self.lbl_notice.pack(side="left", fill="x", expand=True, padx=(px(14), px(8)), pady=px(6))
+        self.btn_notice_later = self._reg(ttk.Button(self.notice, style="NoticeLater.TButton",
+                                                     command=self._update_later), "btn_later")
+        self.btn_notice_later.pack(side="right", padx=(px(6), px(8)), pady=px(5))
+        self.btn_notice_update = self._reg(ttk.Button(self.notice, style="NoticeUpdate.TButton",
+                                                      command=self._update_open), "btn_update")
+        self.btn_notice_update.pack(side="right", pady=px(5))
+
     def _apply_texts(self) -> None:
         self.root.title(t("app_title"))
         for widget, key, attr in self._texts:
@@ -277,6 +304,8 @@ class App:
         self._update_count()
         if self._status_key:
             self._set_status(self._status_key, **self._status_kwargs)
+        if self._update_info is not None:
+            self._show_update_notice()
 
     def _fit_columns(self, event=None) -> None:
         """Share the table's width out between the columns. A Treeview never shrinks
@@ -784,6 +813,59 @@ class App:
                 subprocess.Popen(["xdg-open", os.path.dirname(target)])
         except OSError:
             pass
+
+    # ------------------------------------------------------------ new version notice
+    def _save_update_prefs(self) -> None:
+        self.update_prefs.update_check = bool(self.var_update_check.get())
+        settings = i18n.load_settings()
+        update_check.store_prefs(settings, self.update_prefs)
+        i18n.save_settings(settings)
+
+    def _on_update_result(self, info: update_check.UpdateInfo | None, answered: bool) -> None:
+        """Tk thread. The day is recorded only when the server answered, so an offline
+        start asks again next time."""
+        if self._closing:
+            return
+        if answered:
+            self.update_prefs.update_check_last = update_check.today()
+            self._save_update_prefs()
+        if info is not None and self.var_update_check.get():
+            self._update_info = info
+            self._show_update_notice()
+
+    def _show_update_notice(self) -> None:
+        info = self._update_info
+        if info is None:
+            self.notice.grid_remove()
+            return
+        self.lbl_notice.configure(text=t("update_available", latest=info.latest, current=info.current))
+        px = self.theme.px
+        self.notice.grid(row=6, column=0, sticky="ew", padx=px(24), pady=(0, px(16)))
+
+    def _hide_update_notice(self) -> None:
+        self._update_info = None
+        self.notice.grid_remove()
+
+    def _update_open(self) -> None:
+        """The tools page, never a download: the site counts and serves the download."""
+        info = self._update_info
+        if info is not None and info.url.startswith(update_check.SITE):
+            try:
+                webbrowser.open(info.url)
+            except Exception:
+                pass
+        self._hide_update_notice()
+
+    def _update_later(self) -> None:
+        if self._update_info is not None:
+            self.update_prefs.update_check_skipped = self._update_info.latest     # a newer one is shown again
+            self._save_update_prefs()
+        self._hide_update_notice()
+
+    def _on_update_toggle(self) -> None:
+        self._save_update_prefs()
+        if not self.var_update_check.get():
+            self._hide_update_notice()
 
     def _on_close(self) -> None:
         self._closing = True

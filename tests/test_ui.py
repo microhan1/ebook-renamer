@@ -253,8 +253,9 @@ class WindowTests(unittest.TestCase):
         shutil.rmtree(self.work, ignore_errors=True)
         i18n.set_lang("en", persist=False)
 
-    def make(self, scale: float | None = None):
-        app = self.gui.App(scale=scale)
+    def make(self, scale: float | None = None, check_updates: bool = False):
+        # a window test never talks to the real server unless it fakes the answer itself
+        app = self.gui.App(scale=scale, check_updates=check_updates)
         self.apps.append(app)
         return app
 
@@ -297,7 +298,8 @@ class WindowTests(unittest.TestCase):
         must_show = {"drop zone": app.zone, "add files": app.btn_add, "add folder": app.btn_add_dir,
                      "clear": app.btn_clear, "pattern": app.cmb_pattern, "recursive": app.chk_recursive,
                      "others": app.chk_others, "select all": app.btn_toggle, "table": app.tree, "open folder": app.btn_open,
-                     "undo": app.btn_undo, "rename": app.btn_run, "language": app.cmb_lang, "status": app.lbl_status}
+                     "undo": app.btn_undo, "rename": app.btn_run, "language": app.cmb_lang, "status": app.lbl_status,
+                     "update check": app.chk_update}
         for name, widget in must_show.items():
             self.assertTrue(widget.winfo_ismapped(), f"{label}: {name} is not shown")
             left, top, right, bottom = box(widget)
@@ -653,6 +655,176 @@ class WindowTests(unittest.TestCase):
         app._editor.insert(0, "Typed")
         app._commit_edit()
         self.assertEqual(app.iid_to_item[iid].new_name, "Typed.epub")
+
+    # ------------------------------------------------------------ new version notice
+    def fresh_settings(self, **entries) -> None:
+        i18n.save_settings(dict(entries))
+
+    def notice_info(self, latest: str = "9.9.9"):
+        import update_check
+
+        return update_check.UpdateInfo(latest, version.__version__,
+                                       "https://chaekgalpi.co.kr/tools/ebookrenamer?utm_source=app")
+
+    def test_update_check_box_sits_next_to_the_language_box_and_starts_on(self) -> None:
+        self.fresh_settings()
+        app = self.make(1.0)
+        app.root.update()
+        self.assertTrue(app.var_update_check.get())
+        self.assertEqual(app.chk_update.cget("text"), i18n.t("opt_update_check"))
+        self.assertEqual(app.chk_update.grid_info()["row"], app.cmb_lang.grid_info()["row"])
+        self.assertGreater(app.chk_update.winfo_rootx(), app.cmb_lang.winfo_rootx())
+
+    def test_no_notice_until_there_is_one(self) -> None:
+        self.fresh_settings()
+        app = self.make(1.0)
+        app.root.update()
+        self.assertFalse(app.notice.winfo_ismapped())
+        self.assertIsNone(app._update_info)
+
+    def test_notice_text_and_buttons_in_every_language(self) -> None:
+        for code in i18n.LANGS:
+            with self.subTest(lang=code):
+                self.fresh_settings()
+                i18n.set_lang(code, persist=False)
+                app = self.make(1.0)
+                app._on_update_result(self.notice_info("9.9.9"), True)
+                app.root.update()
+                self.assertTrue(app.notice.winfo_ismapped())
+                text = app.lbl_notice.cget("text")
+                self.assertIn("9.9.9", text)
+                self.assertIn(version.__version__, text)
+                self.assertEqual(app.btn_notice_update.cget("text"), i18n.t("btn_update"))
+                self.assertEqual(app.btn_notice_later.cget("text"), i18n.t("btn_later"))
+                self.check_layout(app, f"notice/{code}")
+                for w in (app.notice, app.btn_notice_update, app.btn_notice_later):
+                    self.assertLessEqual(w.winfo_rootx() + w.winfo_width(),
+                                         app.root.winfo_rootx() + app.root.winfo_width() + 1)
+                    self.assertLessEqual(w.winfo_rooty() + w.winfo_height(),
+                                         app.root.winfo_rooty() + app.root.winfo_height() + 1)
+        i18n.set_lang("en", persist=False)
+
+    def test_notice_follows_the_language_switch(self) -> None:
+        self.fresh_settings()
+        app = self.make(1.0)
+        app._on_update_result(self.notice_info("9.9.9"), True)
+        app.var_lang.set(i18n.LANG_NAMES["ko"])
+        app.cmb_lang.current(i18n.LANGS.index("ko"))
+        app._on_lang()
+        self.assertEqual(app.lbl_notice.cget("text"), i18n.t("update_available", latest="9.9.9", current=version.__version__))
+        self.assertEqual(app.btn_notice_later.cget("text"), i18n.t("btn_later"))
+        i18n.set_lang("en", persist=False)
+
+    def test_notice_leaves_everything_above_it_where_it_was(self) -> None:
+        self.fresh_settings()
+        app = self.make(1.0)
+        self.load(app)
+        app.root.update()
+        keep = (app.zone, app.cmb_pattern, app.cmb_lang, app.chk_update, app.tree)     # all above the table's lower edge
+        before = [(w.winfo_rootx(), w.winfo_rooty(), w.winfo_width()) for w in keep]
+        size_before = (app.root.winfo_width(), app.root.winfo_height())
+        app._on_update_result(self.notice_info(), True)
+        app.root.update()
+        after = [(w.winfo_rootx(), w.winfo_rooty(), w.winfo_width()) for w in keep]
+        self.assertEqual(before, after)
+        self.assertEqual(size_before, (app.root.winfo_width(), app.root.winfo_height()))
+        self.assertGreaterEqual(app.tree.winfo_height(), 4 * app.theme.px(36))      # the table gave the room, not the window
+        self.assertGreater(app.notice.winfo_rooty(), app.btn_run.winfo_rooty())     # a line under the bottom bar
+        app._update_later()
+        app.root.update()
+        self.assertEqual(before, [(w.winfo_rootx(), w.winfo_rooty(), w.winfo_width()) for w in keep])
+
+    def test_later_remembers_the_version_and_hides_the_notice(self) -> None:
+        self.fresh_settings(lang="en")
+        app = self.make(1.0)
+        app._on_update_result(self.notice_info("9.9.9"), True)
+        app._update_later()
+        app.root.update()
+        self.assertFalse(app.notice.winfo_ismapped())
+        saved = i18n.load_settings()
+        self.assertEqual(saved["update_check_skipped"], "9.9.9")
+        self.assertEqual(saved["lang"], "en")                      # the other entries stay
+
+    def test_update_button_opens_only_the_tools_site(self) -> None:
+        self.fresh_settings()
+        app = self.make(1.0)
+        app._on_update_result(self.notice_info(), True)
+        with mock.patch("webbrowser.open") as opened:
+            app._update_open()
+        opened.assert_called_once_with("https://chaekgalpi.co.kr/tools/ebookrenamer?utm_source=app")
+        self.assertFalse(app.notice.winfo_ismapped())
+        app = self.make(1.0)
+        import update_check
+
+        app._update_info = update_check.UpdateInfo("9.9.9", version.__version__, "https://example.com/x")
+        with mock.patch("webbrowser.open") as opened:
+            app._update_open()
+        opened.assert_not_called()
+
+    def test_switching_the_check_off_saves_it_and_hides_the_notice(self) -> None:
+        self.fresh_settings()
+        app = self.make(1.0)
+        app._on_update_result(self.notice_info(), True)
+        app.var_update_check.set(False)
+        app._on_update_toggle()
+        app.root.update()
+        self.assertFalse(app.notice.winfo_ismapped())
+        self.assertIs(i18n.load_settings()["update_check"], False)
+        app.var_update_check.set(True)
+        app._on_update_toggle()
+        self.assertIs(i18n.load_settings()["update_check"], True)
+
+    def test_no_notice_when_the_box_was_switched_off_meanwhile(self) -> None:
+        self.fresh_settings()
+        app = self.make(1.0)
+        app.var_update_check.set(False)
+        app._on_update_result(self.notice_info(), True)
+        self.assertIsNone(app._update_info)
+
+    def test_the_day_is_recorded_only_when_the_server_answered(self) -> None:
+        import update_check
+
+        self.fresh_settings()
+        app = self.make(1.0)
+        app._on_update_result(None, False)
+        self.assertNotIn("update_check_last", i18n.load_settings())
+        app._on_update_result(None, True)
+        self.assertEqual(i18n.load_settings()["update_check_last"], update_check.today())
+        self.assertFalse(app.notice.winfo_ismapped())
+
+    def test_window_asks_once_after_start_and_not_again_the_same_day(self) -> None:
+        import update_check
+
+        answer = {"latest": "9.9.9", "updateAvailable": True,
+                  "url": "https://chaekgalpi.co.kr/tools/ebookrenamer?utm_source=app"}
+        calls: list = []
+
+        def fake(slug, ver, **kw):
+            calls.append((slug, ver))
+            return answer
+
+        self.fresh_settings()
+        with mock.patch.object(update_check, "fetch", fake):
+            app = self.make(1.0, check_updates=True)
+            self.settle(app, lambda: app._update_info is not None)
+            self.assertEqual(calls, [("ebookrenamer", version.__version__)])
+            self.assertTrue(app.notice.winfo_ismapped())
+            self.assertEqual(i18n.load_settings()["update_check_last"], update_check.today())
+            second = self.make(1.0, check_updates=True)
+            second.root.update()
+            self.assertEqual(len(calls), 1)                         # already asked today
+
+    def test_a_window_with_the_check_switched_off_never_asks(self) -> None:
+        import update_check
+
+        calls: list = []
+        self.fresh_settings(update_check=False)
+        with mock.patch.object(update_check, "fetch", lambda *a, **k: calls.append(a) or None):
+            app = self.make(1.0, check_updates=True)
+            self.assertFalse(app.var_update_check.get())
+            app.root.after(2200, app.root.quit)                    # well past the 1.5 s delay
+            app.root.mainloop()
+        self.assertEqual(calls, [])
 
 
 if __name__ == "__main__":

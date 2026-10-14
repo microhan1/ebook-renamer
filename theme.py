@@ -225,6 +225,19 @@ class Theme:
                         padding=px(3))
         style.map("Card.TCheckbutton", background=[("active", p["card"])],
                   foreground=[("disabled", p["disabled_fg"])])
+        # the same box on the window background (the header option)
+        style.layout("Plain.TCheckbutton", style.layout("Card.TCheckbutton"))
+        style.configure("Plain.TCheckbutton", background=p["bg"], foreground=p["muted"], focuscolor=p["bg"],
+                        font="EbrSmall", padding=px(3))
+        style.map("Plain.TCheckbutton", background=[("active", p["bg"])],
+                  foreground=[("disabled", p["disabled_fg"])])
+
+        # the one-line "new version" strip under the action bar
+        style.configure("Notice.TLabel", background=p["accent_soft"], foreground=p["text"])
+        flat_button("NoticeUpdate.TButton", p["accent"], p["on_accent"], p["accent"], p["accent_hover"],
+                    p["accent_press"], (px(16), px(5)), "EbrBold")
+        flat_button("NoticeLater.TButton", p["accent_soft"], p["accent"], p["accent_soft"], p["select"],
+                    p["select"], (px(12), px(5)), "EbrBody")
 
         # combobox
         style.configure("TCombobox", fieldbackground="#FFFFFF", background="#FFFFFF", foreground=p["text"],

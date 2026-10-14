@@ -2,7 +2,7 @@
 
 [한국어](README.md) · [中文](README.zh-CN.md) · [日本語](README.ja.md)
 
-Reads the title and author embedded in EPUB and PDF files in a folder and renames them all to `Author - Title.epub` in one go. Check the preview table first, then run; undo stays available afterwards. No server, no install, file contents are never modified.
+Reads the title and author embedded in EPUB and PDF files in a folder and renames them all to `Author - Title.epub` in one go. Check the preview table first, then run; undo stays available afterwards. No server (the update check is the only exception, and you can turn it off), no install, file contents are never modified.
 
 > **Undo**: a `rename_log.json` is written to the folder you ran on. Press **Undo** in the window or run `python main.py ./books --undo` to restore every original name.
 
@@ -40,13 +40,20 @@ python main.py ./books --undo
 
 `--dry-run` prints the table and changes nothing; with `--undo` it only lists what would be restored. `python main.py --help` prints the options in your OS language (한국어 · English · 中文 · 日本語).
 
+## Update check
+
+When it starts, it sends only the tool name and version to the Chaekgalpi server (chaekgalpi.co.kr) to see whether a newer version exists. No files are sent, it checks at most once a day, and you can turn it off in the settings. The request contains only the tool name, the version and a Windows marker (`win`).
+
+If a newer version exists, a single line appears at the bottom of the window, and **Update** opens the Chaekgalpi Tools page. To turn it off, untick **Check for updates** at the top right of the window. When you are offline or the server does not answer, nothing is shown.
+
 ## What it does not do
 
 - It does not edit or fill in metadata. Read only.
-- It does not look up book information on the internet.
+- It does not look up book information on the internet (the update check is the only exception, and you can turn it off).
 - It does not move files to other folders or create folders. Names only.
 - It does not detect duplicate books.
 - Extensions other than EPUB and PDF are ignored.
+- It does not download or install a new version by itself.
 
 ## Series
 
