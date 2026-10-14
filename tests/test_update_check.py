@@ -233,6 +233,50 @@ class WhenANoticeShowsTests(Base):
         self.assertEqual(uc.interpret(dict(OK, latest=" 0.3.0 "), "0.2.2").latest, "0.3.0")
 
 
+class EnglishPageTests(unittest.TestCase):
+    """[Update] opens the English tools page on a non-Korean screen when the server gives one."""
+    EN = "https://chaekgalpi.co.kr/en/tools/ebookrenamer?utm_source=app&utm_medium=update"
+
+    def info(self, **answer):
+        return uc.interpret(dict(OK, **answer), "0.2.2")
+
+    def test_korean_screen_gets_the_korean_page(self) -> None:
+        self.assertEqual(uc.page_for(self.info(urlEn=self.EN), "ko"), OK["url"])
+
+    def test_english_screen_gets_the_english_page(self) -> None:
+        self.assertEqual(uc.page_for(self.info(urlEn=self.EN), "en"), self.EN)
+
+    def test_japanese_and_chinese_screens_get_the_english_page(self) -> None:
+        for lang in ("ja", "zh-CN"):
+            with self.subTest(lang=lang):
+                self.assertEqual(uc.page_for(self.info(urlEn=self.EN), lang), self.EN)
+
+    def test_english_screen_falls_back_to_the_korean_page(self) -> None:
+        no_key = self.info()
+        self.assertEqual(uc.page_for(no_key, "en"), OK["url"])
+        for bad in (None, "", 5, ["x"], "https://evil.example/en/tools/ebookrenamer",
+                    "http://chaekgalpi.co.kr/en/tools/ebookrenamer", "https://chaekgalpi.co.kr.evil.example/en"):
+            with self.subTest(urlEn=bad):
+                info = self.info(urlEn=bad)
+                self.assertEqual(info.url_en, "")
+                self.assertEqual(uc.page_for(info, "en"), OK["url"])
+
+    def test_an_english_page_does_not_rescue_a_bad_korean_one(self) -> None:
+        self.assertIsNone(uc.interpret(dict(OK, url="https://evil.example/", urlEn=self.EN), "0.2.2"))
+
+    def test_nothing_more_is_sent_to_the_server(self) -> None:
+        seen = {}
+
+        def opener(req, timeout):
+            seen["url"] = req.full_url
+            seen["headers"] = {k.lower() for k, _ in req.header_items()}
+            return FakeResp(json.dumps(dict(OK, urlEn=self.EN)).encode())
+
+        uc.fetch(SLUG, "0.2.2", opener=opener)
+        self.assertEqual(urllib.parse.parse_qs(urllib.parse.urlsplit(seen["url"]).query), {"v": ["0.2.2"], "os": ["win"]})
+        self.assertLessEqual(seen["headers"], {"user-agent", "accept"})
+
+
 class ThreadHandoffTests(unittest.TestCase):
     def test_the_thread_holds_no_tk_object(self) -> None:
         """The fetch thread must not keep the window alive: if it held the last reference,

@@ -761,6 +761,24 @@ class WindowTests(unittest.TestCase):
             app._update_open()
         opened.assert_not_called()
 
+    def test_update_button_opens_the_page_in_the_screen_language(self) -> None:
+        import update_check
+
+        ko = "https://chaekgalpi.co.kr/tools/ebookrenamer?utm_source=app"
+        en = "https://chaekgalpi.co.kr/en/tools/ebookrenamer?utm_source=app"
+        cases = [("ko", en, ko), ("en", en, en), ("ja", en, en), ("zh-CN", en, en),
+                 ("en", "", ko), ("en", "https://evil.example/en", ko)]
+        for lang, url_en, expected in cases:
+            with self.subTest(lang=lang, url_en=url_en):
+                self.fresh_settings()
+                i18n.set_lang(lang, persist=False)
+                app = self.make(1.0)
+                app._on_update_result(update_check.UpdateInfo("9.9.9", version.__version__, ko, url_en), True)
+                with mock.patch("webbrowser.open") as opened:
+                    app._update_open()
+                opened.assert_called_once_with(expected)
+        i18n.set_lang("en", persist=False)
+
     def test_switching_the_check_off_saves_it_and_hides_the_notice(self) -> None:
         self.fresh_settings()
         app = self.make(1.0)

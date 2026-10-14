@@ -849,9 +849,10 @@ class App:
     def _update_open(self) -> None:
         """The tools page, never a download: the site counts and serves the download."""
         info = self._update_info
-        if info is not None and info.url.startswith(update_check.SITE):
+        url = update_check.page_for(info, i18n.current_lang()) if info is not None else ""
+        if url.startswith(update_check.SITE):           # an English screen gets the English page when there is one
             try:
-                webbrowser.open(info.url)
+                webbrowser.open(url)
             except Exception:
                 pass
         self._hide_update_notice()
