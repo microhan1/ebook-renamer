@@ -58,7 +58,7 @@ If a newer version exists, a single line appears at the bottom of the window, an
 ## Series
 
 - Chaekgalpi Tools: [Scan PDF Cleanup](https://github.com/microhan1/scan-pdf-cleanup) · [Two-page Split](https://github.com/microhan1/scan-pdf-split)- Browser version, nothing to install: [Spread Split](https://microhan1.github.io/spread-split/)
-- [Chaekgalpi Library](https://chaekgalpi.co.kr/tools/ebookrenamer?utm_source=github&utm_medium=referral&utm_campaign=tool_cta&utm_content=ebookrenamer) — a web service for recording the books you have read and your reviews. When you finish a book you have organized, leave a one-line note.
+- [Chaekgalpi Library](https://chaekgalpi.co.kr/en/tools/ebookrenamer?utm_source=github&utm_medium=referral&utm_campaign=tool_cta&utm_content=ebookrenamer) — a web service for recording the books you have read and your reviews (tools page in English; the reading-log service itself is in Korean). When you finish a book you have organized, leave a one-line note.
 
 ## License
 
