@@ -238,6 +238,10 @@ class WindowTests(unittest.TestCase):
         i18n.set_lang("en", persist=False)
 
     def tearDown(self) -> None:
+        from tests import _netguard
+
+        tried = _netguard.take()
+        self.assertEqual(tried, [], "a window test tried to reach the production server")
         for app in self.apps:
             app.read_gen += 1                                  # a read still in flight stops at its next file
             if app.worker is not None:

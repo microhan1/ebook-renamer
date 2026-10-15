@@ -351,11 +351,13 @@ class ThreadHandoffTests(unittest.TestCase):
         if "TclError" in out and "display" in out:
             self.skipTest("no display")
         self.assertTrue(p.returncode == 0 and "survived" in out and "Tcl_AsyncDelete" not in out, out[-800:])
+        self.assertIn("attempts=0", out)
 
 
 CLOSE_WHILE_ASKING = r'''
 import os, sys, tempfile, time
 sys.path.insert(0, {root!r})
+from tests import _netguard               # the production server is blocked in this child too
 import i18n
 i18n.SETTINGS_PATH = os.path.join(tempfile.mkdtemp(), "settings.json")     # never the user's file
 i18n.init("en")
@@ -370,7 +372,7 @@ for _ in range(3):
     app.root.mainloop()
     del app
     time.sleep(2.0)          # the thread finishes with no window left
-print("survived")
+print("survived", "attempts=%d" % len(_netguard.attempts))
 '''
 
 
