@@ -152,6 +152,10 @@ class App:
         self.chk_update = self._reg(ttk.Checkbutton(side, style="Plain.TCheckbutton", variable=self.var_update_check,
                                                     command=self._on_update_toggle), "opt_update_check")
         self.chk_update.grid(row=0, column=3, padx=(px(14), 0))
+        self.btn_feedback = self._reg(ttk.Button(side, style="HeadLink.TButton", command=self._send_feedback),
+                                      "btn_feedback")
+        # on a line of its own under the check box: beside it, the header no longer fit the smallest window
+        self.btn_feedback.grid(row=1, column=0, columnspan=4, sticky="e")
 
         # ---- drop zone with the add / clear buttons inside
         zone_row = ttk.Frame(root, padding=(pad, px(12), pad, 0))
@@ -813,6 +817,20 @@ class App:
                 subprocess.Popen(["xdg-open", os.path.dirname(target)])
         except OSError:
             pass
+
+    def _send_feedback(self) -> None:
+        """Open the feedback box on the tool's page. Nothing is sent from the program; when no
+        browser opens, the address is shown (and kept in the log) to copy by hand."""
+        url = update_check.feedback_url(update_check.SLUG, __version__, i18n.current_lang())
+        try:
+            opened = webbrowser.open(url)
+        except Exception:
+            opened = False
+        if opened:
+            return
+        self.log("err_feedback_open", url=url)
+        self._toggle_log(True)
+        messagebox.showwarning(t("btn_feedback"), t("err_feedback_open", url=url), parent=self.root)
 
     # ------------------------------------------------------------ new version notice
     def _save_update_prefs(self) -> None:

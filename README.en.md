@@ -46,6 +46,10 @@ When it starts, it sends only the tool name and version to the Chaekgalpi server
 
 If a newer version exists, a single line appears at the bottom of the window, and **Update** opens the Chaekgalpi Tools page. To turn it off, untick **Check for updates** at the top right of the window. When you are offline or the server does not answer, nothing is shown.
 
+## Feedback
+
+Tell us what's broken, awkward or missing with **Send feedback** at the top right of the window, or on the [Chaekgalpi Tools page](https://chaekgalpi.co.kr/en/tools/ebookrenamer#feedback) - no sign-in needed. The program only opens that page in your browser and sends nothing itself. [GitHub Issues](https://github.com/microhan1/ebook-renamer/issues) are welcome as before.
+
 ## What it does not do
 
 - It does not edit or fill in metadata. Read only.

@@ -10,6 +10,8 @@
   "update_available": "새 버전이 나왔습니다: {latest} (현재 {current})",
   "btn_update": "업데이트",
   "btn_later": "다음에",
+  "btn_feedback": "의견 보내기",
+  "err_feedback_open": "브라우저를 열지 못했습니다. 아래 주소를 복사해 브라우저 주소 창에 붙여 넣어 주세요:\n{url}",
   "btn_add_files": "파일 추가",
   "btn_add_folder": "폴더 추가",
   "btn_clear": "비우기",

@@ -43,6 +43,22 @@ def page_for(info: UpdateInfo, lang: str) -> str:
     return info.url
 
 
+FEEDBACK_PAGES = {"ko": SITE + "tools/{slug}", "en": SITE + "en/tools/{slug}"}
+FEEDBACK_LANGS_EN = ("en", "ja", "zh-cn")     # no Japanese or Chinese page: they read the English one
+
+
+def feedback_url(slug: str, version, lang) -> str:
+    """The feedback box on the tool's page ([Send feedback] only opens it in the browser).
+    Built from constants alone; the version is the one value that varies, so it is encoded
+    and left out when empty. utm_source=app marks it as coming from the program."""
+    page = "en" if isinstance(lang, str) and lang.lower() in FEEDBACK_LANGS_EN else "ko"
+    query = "utm_source=app&utm_medium=feedback"
+    version = "" if version is None else str(version)
+    if version.strip():
+        query += "&v=" + urllib.parse.quote(version, safe="")
+    return f"{FEEDBACK_PAGES[page].format(slug=slug)}?{query}#feedback"
+
+
 @dataclasses.dataclass
 class Prefs:
     update_check: bool = True         # on by default; the check box turns it off

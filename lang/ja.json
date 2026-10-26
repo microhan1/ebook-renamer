@@ -10,6 +10,8 @@
   "update_available": "新しいバージョン {latest} があります（現在 {current}）",
   "btn_update": "更新",
   "btn_later": "後で",
+  "btn_feedback": "ご意見を送る",
+  "err_feedback_open": "ブラウザを開けませんでした。次のアドレスをコピーして、ブラウザのアドレスバーに貼り付けてください:\n{url}",
   "btn_add_files": "ファイル追加",
   "btn_add_folder": "フォルダ追加",
   "btn_clear": "クリア",

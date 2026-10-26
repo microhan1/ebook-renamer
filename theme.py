@@ -212,6 +212,7 @@ class Theme:
         flat_button("Ghost.TButton", p["bg"], p["text"], p["bg"], p["header_bg"], p["header_hover"], (px(12), px(7)), "EbrBody")
         flat_button("Toggle.TButton", p["card"], p["muted"], p["card"], p["header_bg"], p["header_hover"], (px(12), px(2)), "EbrLead")
         flat_button("Link.TButton", p["card"], p["accent"], p["card"], p["accent_soft"], p["select"], (px(10), px(5)), "EbrBold")
+        flat_button("HeadLink.TButton", p["bg"], p["accent"], p["bg"], p["header_bg"], p["header_hover"], (px(8), px(3)), "EbrSmall")
 
         # checkbuttons on a card: the same drawn boxes as in the table
         boxes = self.checkbox_images(gap=px(8))               # the gap keeps the label off the box

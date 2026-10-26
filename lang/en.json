@@ -10,6 +10,8 @@
   "update_available": "Version {latest} is available (current {current})",
   "btn_update": "Update",
   "btn_later": "Later",
+  "btn_feedback": "Send feedback",
+  "err_feedback_open": "Could not open your browser. Copy this address into your browser's address bar:\n{url}",
   "btn_add_files": "Add files",
   "btn_add_folder": "Add folder",
   "btn_clear": "Clear",

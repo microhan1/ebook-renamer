@@ -303,7 +303,7 @@ class WindowTests(unittest.TestCase):
                      "clear": app.btn_clear, "pattern": app.cmb_pattern, "recursive": app.chk_recursive,
                      "others": app.chk_others, "select all": app.btn_toggle, "table": app.tree, "open folder": app.btn_open,
                      "undo": app.btn_undo, "rename": app.btn_run, "language": app.cmb_lang, "status": app.lbl_status,
-                     "update check": app.chk_update}
+                     "update check": app.chk_update, "send feedback": app.btn_feedback}
         for name, widget in must_show.items():
             self.assertTrue(widget.winfo_ismapped(), f"{label}: {name} is not shown")
             left, top, right, bottom = box(widget)
@@ -847,6 +847,169 @@ class WindowTests(unittest.TestCase):
             app.root.after(2200, app.root.quit)                    # well past the 1.5 s delay
             app.root.mainloop()
         self.assertEqual(calls, [])
+
+    # ------------------------------------------------------------ send feedback
+    def no_network(self):
+        """Record (and refuse) every way out to the network while the block runs."""
+        import socket
+        import urllib.request
+        from contextlib import ExitStack
+
+        calls: list = []
+
+        def refuse(*a, **k):
+            calls.append(a)
+            raise OSError("no network in this test")
+
+        stack = ExitStack()
+        for target, name in ((socket.socket, "connect"), (socket.socket, "connect_ex"), (socket, "create_connection"),
+                             (socket, "getaddrinfo"), (urllib.request, "urlopen")):
+            stack.enter_context(mock.patch.object(target, name, refuse))
+        return stack, calls
+
+    def expected_feedback_url(self, lang: str) -> str:
+        page = "tools" if lang == "ko" else "en/tools"
+        return (f"https://chaekgalpi.co.kr/{page}/ebookrenamer?utm_source=app&utm_medium=feedback"
+                f"&v={version.__version__}#feedback")
+
+    def switch_lang(self, app, code: str) -> None:
+        app.var_lang.set(i18n.LANG_NAMES[code])
+        app.cmb_lang.current(i18n.LANGS.index(code))
+        app._on_lang()
+
+    def test_feedback_button_sits_under_the_update_check_box(self) -> None:
+        self.fresh_settings()
+        app = self.make(1.0)
+        app.root.update()
+        self.assertEqual(app.btn_feedback.cget("text"), i18n.t("btn_feedback"))
+        self.assertEqual(app.btn_feedback.master, app.chk_update.master)
+        self.assertGreaterEqual(app.btn_feedback.winfo_rooty(), app.chk_update.winfo_rooty() + app.chk_update.winfo_height() - 1)
+        right = app.chk_update.winfo_rootx() + app.chk_update.winfo_width()
+        self.assertAlmostEqual(app.btn_feedback.winfo_rootx() + app.btn_feedback.winfo_width(), right, delta=2)
+        head = app.lbl_subtitle.master
+        self.assertLessEqual(app.btn_feedback.winfo_rooty() + app.btn_feedback.winfo_height(),
+                             head.winfo_rooty() + head.winfo_height())               # inside the header, not below it
+        self.assertEqual(str(app.btn_feedback.cget("style")), "HeadLink.TButton")
+        self.assertGreaterEqual(theme.contrast_ratio(theme.PALETTE["accent"], theme.PALETTE["bg"]), 4.5)
+
+    def test_feedback_opens_the_page_once_in_every_language(self) -> None:
+        stack, net = self.no_network()
+        with stack:
+            for code in i18n.LANGS:
+                with self.subTest(lang=code):
+                    self.fresh_settings()
+                    i18n.set_lang(code, persist=False)
+                    app = self.make(1.0)
+                    with mock.patch("webbrowser.open", return_value=True) as opened:
+                        app.btn_feedback.invoke()
+                    opened.assert_called_once_with(self.expected_feedback_url(code))
+                    messagebox.showwarning.assert_not_called()
+                    self.assertEqual(app.txt_log.get("1.0", "end").strip(), "")
+                    self.assertFalse(app.log_open)
+        self.assertEqual(net, [])
+        i18n.set_lang("en", persist=False)
+
+    def test_feedback_follows_the_language_switch(self) -> None:
+        stack, net = self.no_network()
+        with stack:
+            self.fresh_settings()
+            i18n.set_lang("ko", persist=False)
+            app = self.make(1.0)
+            seen = []
+            for code in ("ko", "en", "ja", "zh-CN", "ko"):
+                self.switch_lang(app, code)
+                self.assertEqual(app.btn_feedback.cget("text"), i18n.t("btn_feedback"))
+                with mock.patch("webbrowser.open", return_value=True) as opened:
+                    app._send_feedback()
+                opened.assert_called_once()
+                seen.append(opened.call_args.args[0])
+            self.assertEqual(seen, [self.expected_feedback_url(c) for c in ("ko", "en", "ja", "zh-CN", "ko")])
+            words = set()
+            for code in i18n.LANGS:
+                self.switch_lang(app, code)
+                words.add(app.btn_feedback.cget("text"))
+            self.assertEqual(len(words), 4)                       # each language has its own words on the button
+        self.assertEqual(net, [])
+        i18n.set_lang("en", persist=False)
+
+    def test_feedback_without_a_browser_shows_the_address_and_changes_nothing(self) -> None:
+        import webbrowser
+
+        failures = {"returns False": dict(return_value=False),
+                    "webbrowser.Error": dict(side_effect=webbrowser.Error("no runnable browser")),
+                    "OSError": dict(side_effect=OSError("access denied")),
+                    "RuntimeError": dict(side_effect=RuntimeError("odd"))}
+        stack, net = self.no_network()
+        with stack:
+            for code in ("ko", "en"):
+                for name, behaviour in failures.items():
+                    with self.subTest(lang=code, failure=name):
+                        self.fresh_settings(lang=code, update_check=True)
+                        i18n.set_lang(code, persist=False)
+                        app = self.make(1.0)
+                        self.load(app)
+                        app.root.update()
+                        settings_before = i18n.load_settings()
+                        state_before = ([(it.path, it.new_name, it.selected, it.status) for it in app.items],
+                                        app.lbl_status.cget("text"), app.var_pattern.get(), app.var_update_check.get(),
+                                        app._update_info, list(app.sources), str(app.btn_run.cget("state")))
+                        messagebox.showwarning.reset_mock()
+                        with mock.patch("webbrowser.open", **behaviour) as opened:
+                            app.btn_feedback.invoke()                 # must not raise
+                        opened.assert_called_once()
+                        address = self.expected_feedback_url(code)
+                        messagebox.showwarning.assert_called_once()
+                        title, text = messagebox.showwarning.call_args.args[:2]
+                        self.assertEqual(title, i18n.t("btn_feedback"))
+                        self.assertEqual(text, i18n.t("err_feedback_open", url=address))
+                        self.assertTrue(text.endswith("\n" + address))
+                        self.assertIn(address, app.txt_log.get("1.0", "end"))     # kept where it can be selected and copied
+                        self.assertTrue(app.log_open)
+                        self.assertTrue(app.root.winfo_exists())
+                        state_after = ([(it.path, it.new_name, it.selected, it.status) for it in app.items],
+                                       app.lbl_status.cget("text"), app.var_pattern.get(), app.var_update_check.get(),
+                                       app._update_info, list(app.sources), str(app.btn_run.cget("state")))
+                        self.assertEqual(state_before, state_after)
+                        self.assertEqual(settings_before, i18n.load_settings())
+                        self.assertFalse(app._running)
+                        with mock.patch("webbrowser.open", return_value=True) as opened:   # works again afterwards
+                            app.btn_feedback.invoke()
+                        opened.assert_called_once_with(address)
+        self.assertEqual(net, [])
+        i18n.set_lang("en", persist=False)
+
+    def test_feedback_leaves_the_update_check_alone(self) -> None:
+        import update_check
+
+        calls: list = []
+
+        def fake(slug, ver, **kw):
+            calls.append((slug, ver))
+            return None
+
+        stack, net = self.no_network()
+        with stack, mock.patch.object(update_check, "fetch", fake):
+            self.fresh_settings()
+            app = self.make(1.0, check_updates=True)
+            with mock.patch("webbrowser.open", return_value=True):
+                app._send_feedback()
+            self.settle(app, lambda: bool(calls))                  # past the update check's 1.5 s delay
+            app.root.after(300, app.root.quit)
+            app.root.mainloop()
+            self.assertEqual(calls, [("ebookrenamer", version.__version__)])     # the one usual check, nothing more
+            self.assertTrue(app.var_update_check.get())
+            self.assertEqual(i18n.load_settings(), {})
+            app._on_update_result(self.notice_info("9.9.9"), True)   # the notice still works as before
+            with mock.patch("webbrowser.open", return_value=True) as opened:
+                app._send_feedback()
+            app.root.update()
+            self.assertTrue(app.notice.winfo_ismapped())
+            self.assertEqual(app._update_info.latest, "9.9.9")
+            opened.assert_called_once_with(self.expected_feedback_url("en"))
+            with mock.patch("webbrowser.open") as opened:
+                app._update_open()
+            opened.assert_called_once_with("https://chaekgalpi.co.kr/tools/ebookrenamer?utm_source=app")
+        self.assertEqual(net, [])
 
 
 if __name__ == "__main__":

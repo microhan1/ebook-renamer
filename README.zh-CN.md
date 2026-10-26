@@ -46,6 +46,10 @@ python main.py ./books --undo
 
 有新版本时，窗口下方会显示一行提示，点击**更新**会打开书签工具页面。要关闭，请取消窗口右上角的**检查新版本**勾选。未联网或服务器没有响应时，不会有任何提示。
 
+## 反馈
+
+遇到问题、不便之处或想要的功能，可以点击窗口右上角的**发送反馈**，或在[书签工具页面](https://chaekgalpi.co.kr/en/tools/ebookrenamer#feedback)无需登录直接提交。程序只会在浏览器中打开该页面，本身不发送任何内容。也欢迎继续使用 [GitHub Issues](https://github.com/microhan1/ebook-renamer/issues)。
+
 ## 不做的事
 
 - 不修改、不补充元数据，只读取。
