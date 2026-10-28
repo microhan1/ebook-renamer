@@ -172,6 +172,14 @@ class ReadmeLinkTests(unittest.TestCase):
                 links = re.findall(r"https://chaekgalpi\.co\.kr/[^\s)]*#feedback", text)
                 self.assertEqual(links, [expected])
 
+    def test_each_readme_sends_the_tools_page_link_to_its_page(self) -> None:
+        import re
+
+        for name, expected in self.EXPECTED.items():
+            with self.subTest(readme=name):
+                links = re.findall(r"(https://chaekgalpi\.co\.kr/[^\s)?#]*)\?utm_source=github", self.read(name))
+                self.assertEqual(links, [expected.split("#")[0]])
+
     def test_every_site_address_sits_inside_a_markdown_link(self) -> None:
         import re
 
