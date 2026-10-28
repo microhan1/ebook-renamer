@@ -1,7 +1,8 @@
-"""Custom widgets for the window: the dashed drop zone."""
+"""Custom widgets for the window: the dashed drop zone and a small tooltip."""
 from __future__ import annotations
 
 import tkinter as tk
+from typing import Callable
 
 from theme import Theme
 
@@ -92,3 +93,86 @@ class DropZone(tk.Canvas):
             except tk.TclError:
                 pass
             self.create_window(width - t.px(22), cy, window=self.buttons, anchor="e")
+
+
+class Tooltip:
+    """A small note under a widget while the pointer rests on it: shown DELAY_MS after the
+    pointer comes in, gone when it leaves or clicks. It stays inside the window and the
+    screen. `text` is asked each time it is shown, and refresh() rewrites a note that is up,
+    so a language switch reaches it too."""
+
+    DELAY_MS = 450
+
+    def __init__(self, widget: tk.Misc, theme: Theme, text: Callable[[], str]) -> None:
+        self.widget, self.theme, self.text = widget, theme, text
+        self.tip: tk.Toplevel | None = None
+        self.label: tk.Label | None = None
+        self._job: str | None = None
+        widget.bind("<Enter>", self._on_enter, add="+")
+        widget.bind("<Leave>", self.hide, add="+")
+        widget.bind("<ButtonPress>", self.hide, add="+")
+
+    def _on_enter(self, _event=None) -> None:
+        self._cancel()
+        self._job = self.widget.after(self.DELAY_MS, self.show)
+
+    def _cancel(self) -> None:
+        if self._job is not None:
+            try:
+                self.widget.after_cancel(self._job)
+            except tk.TclError:
+                pass
+            self._job = None
+
+    def shown(self) -> bool:
+        return self.tip is not None
+
+    def show(self) -> None:
+        self._job = None
+        if self.tip is None:
+            p, px = self.theme.p, self.theme.px
+            # built hidden, so it is measured and placed before it first appears
+            self.tip = tk.Toplevel(self.widget, background=p["text"])
+            self.tip.withdraw()
+            self.tip.overrideredirect(True)
+            self.label = tk.Label(self.tip, background=p["text"], foreground=p["card"], font="EbrSmall",
+                                  justify="left", padx=px(8), pady=px(4), bd=0)
+            self.label.pack()
+        self.refresh()
+        self.tip.deiconify()
+
+    def refresh(self) -> None:
+        """New words (after a language switch) in a note that is up, placed again for their length."""
+        if self.tip is None or self.label is None:
+            return
+        left, top, right, bottom = self._bounds()
+        margin, gap = self.theme.px(6), self.theme.px(4)
+        self.label.configure(text=self.text(), wraplength=max(self.theme.px(120), right - left - 2 * margin))
+        self.tip.update_idletasks()
+        width, height = self.tip.winfo_reqwidth(), self.tip.winfo_reqheight()
+        w = self.widget
+        x = w.winfo_rootx() + w.winfo_width() - width          # its right edge under the widget's right edge
+        y = w.winfo_rooty() + w.winfo_height() + gap
+        if y + height > bottom - margin:                        # no room underneath: above the widget
+            y = w.winfo_rooty() - gap - height
+        x = max(left + margin, min(x, right - margin - width))
+        y = max(top + margin, min(y, bottom - margin - height))
+        self.tip.geometry(f"+{x}+{y}")
+
+    def _bounds(self) -> tuple[int, int, int, int]:
+        """The part of the window that is on the screen (the whole window if none of it is)."""
+        top = self.widget.winfo_toplevel()
+        win = (top.winfo_rootx(), top.winfo_rooty(), top.winfo_rootx() + top.winfo_width(),
+               top.winfo_rooty() + top.winfo_height())
+        screen = (0, 0, top.winfo_screenwidth(), top.winfo_screenheight())
+        box = (max(win[0], screen[0]), max(win[1], screen[1]), min(win[2], screen[2]), min(win[3], screen[3]))
+        return box if box[0] < box[2] and box[1] < box[3] else win
+
+    def hide(self, _event=None) -> None:
+        self._cancel()
+        if self.tip is not None:
+            try:
+                self.tip.destroy()
+            except tk.TclError:
+                pass
+            self.tip = self.label = None

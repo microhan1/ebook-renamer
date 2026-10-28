@@ -24,6 +24,7 @@ TIMEOUT = 4.0
 DELAY_MS = 1500
 POLL_MS = 100                       # how often the Tk thread looks for the answer
 MAX_BYTES = 64 * 1024
+DEFAULT_LANG = "en"                 # i18n.DEFAULT_LANG (a test keeps them equal): the screen with no language
 KEYS = ("update_check", "update_check_last", "update_check_skipped")   # the three entries kept in settings.json
 
 
@@ -35,23 +36,32 @@ class UpdateInfo:
     url_en: str = ""      # the English tools page (server answers "urlEn"); "" when absent or not on the site
 
 
-def page_for(info: UpdateInfo, lang: str) -> str:
+def page_lang(lang) -> str:
+    """Which page of the site a screen language reads: "ko" when the code's first part is
+    ko (ko, KO, ko-KR, ko_KR), "en" for every other code, known or not (the site has no
+    Japanese or Chinese page). No language (None, "", blanks, not text) counts as the
+    tool's default screen language. The one rule for [Send feedback] and [Update]."""
+    if not isinstance(lang, str) or not lang.strip():
+        lang = DEFAULT_LANG
+    return "ko" if lang.strip().replace("_", "-").split("-")[0].lower() == "ko" else "en"
+
+
+def page_for(info: UpdateInfo, lang) -> str:
     """The page [Update] opens: the Korean page on a Korean screen, otherwise the English
     page when the server gave one on the tools site, else the Korean page."""
-    if lang != "ko" and isinstance(info.url_en, str) and info.url_en.startswith(SITE):
+    if page_lang(lang) == "en" and isinstance(info.url_en, str) and info.url_en.startswith(SITE):
         return info.url_en
     return info.url
 
 
 FEEDBACK_PAGES = {"ko": SITE + "tools/{slug}", "en": SITE + "en/tools/{slug}"}
-FEEDBACK_LANGS_EN = ("en", "ja", "zh-cn")     # no Japanese or Chinese page: they read the English one
 
 
 def feedback_url(slug: str, version, lang) -> str:
     """The feedback box on the tool's page ([Send feedback] only opens it in the browser).
     Built from constants alone; the version is the one value that varies, so it is encoded
     and left out when empty. utm_source=app marks it as coming from the program."""
-    page = "en" if isinstance(lang, str) and lang.lower() in FEEDBACK_LANGS_EN else "ko"
+    page = page_lang(lang)
     query = "utm_source=app&utm_medium=feedback"
     version = "" if version is None else str(version)
     if version.strip():

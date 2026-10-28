@@ -1011,6 +1011,267 @@ class WindowTests(unittest.TestCase):
             opened.assert_called_once_with("https://chaekgalpi.co.kr/tools/ebookrenamer?utm_source=app")
         self.assertEqual(net, [])
 
+    # ------------------------------------------------------------ send feedback: keyboard
+    def press(self, widget, keysym: str, char: str = "") -> None:
+        """Run what Tk runs for a key press on `widget`, binding tag by binding tag, without
+        sending a real key: nothing reaches the keyboard of whoever is using the computer."""
+        import re
+
+        # what Tk would put in for each %-field of a key press; quoted the way Tk quotes them ("\r" is one value)
+        values = {"#": "1", "b": "0", "f": "1", "h": "0", "k": "0", "s": "0", "t": "0", "w": "0", "x": "1", "y": "1",
+                  "A": char, "E": "0", "K": keysym, "N": "0", "W": str(widget), "T": "2", "X": "1", "Y": "1", "D": "0"}
+        values = {key: value if re.fullmatch(r"[\w.!:-]+", value) else "{" + value + "}" for key, value in values.items()}
+        values["%"] = "%"
+        errors: list = []
+        root = widget._root()
+        root.report_callback_exception = lambda *exc: errors.append(exc[1])   # a Python binding that fails says so
+        for tag in widget.bindtags():
+            script = ""
+            for sequence in (f"<KeyPress-{keysym}>", "<KeyPress>"):      # (<1> alone would be a mouse button)
+                script = str(widget.tk.call("bind", tag, sequence))
+                if script:
+                    break
+            if not script:
+                continue
+            script = re.sub(r"%(.)", lambda m: values.get(m.group(1), "{}"), script)
+            code = int(widget.tk.call("catch", script, "ebr_press_result"))
+            self.assertIn(code, (0, 3), f"{keysym} on {tag}: {widget.tk.getvar('ebr_press_result')}")   # 3: "break"
+            if code == 3:
+                break
+        widget.update()                  # ttk's Space presses the button and invokes it once idle
+        widget.update_idletasks()
+        del root.report_callback_exception
+        self.assertEqual(errors, [], f"{keysym}: a binding raised")
+
+    def test_tab_reaches_send_feedback_after_the_update_check_box(self) -> None:
+        self.fresh_settings()
+        for lang in i18n.LANGS:
+            with self.subTest(lang=lang):
+                i18n.set_lang(lang, persist=False)
+                app = self.make(1.0)
+                app.root.update()
+                self.assertEqual(app.chk_update.tk_focusNext(), app.btn_feedback)       # Tab
+                self.assertEqual(app.btn_feedback.tk_focusPrev(), app.chk_update)       # Shift+Tab
+                after = app.btn_feedback.tk_focusNext()
+                self.assertEqual(after, app.btn_add)                                    # and on into the window
+                self.assertEqual(after.tk_focusPrev(), app.btn_feedback)
+                self.assertTrue(app.btn_feedback.instate(["!disabled"]))
+                self.assertNotIn(str(app.btn_feedback.cget("takefocus")), ("0", "False"))
+        i18n.set_lang("en", persist=False)
+
+    def test_enter_and_space_open_the_page_once_each(self) -> None:
+        stack, net = self.no_network()
+        with stack:
+            self.fresh_settings()
+            app = self.make(1.0)
+            app.root.update()
+            for keysym, char in (("Return", "\r"), ("KP_Enter", "\r"), ("space", " ")):
+                with self.subTest(key=keysym), mock.patch("webbrowser.open", return_value=True) as opened:
+                    self.press(app.btn_feedback, keysym, char)
+                    app.root.update()
+                    opened.assert_called_once_with(self.expected_feedback_url("en"))
+        self.assertEqual(net, [])
+
+    def test_other_keys_do_nothing(self) -> None:
+        stack, net = self.no_network()
+        with stack:
+            self.fresh_settings()
+            app = self.make(1.0)
+            app.root.update()
+            keys = [("a", "a"), ("x", "x"), ("1", "1"), ("Escape", "\x1b"), ("BackSpace", "\b"), ("Delete", ""),
+                    ("Up", ""), ("Down", ""), ("Left", ""), ("Right", ""), ("F1", ""), ("Home", ""), ("Shift_L", ""),
+                    ("Control_L", ""), ("Alt_L", "")]
+            with mock.patch("webbrowser.open", return_value=True) as opened:
+                for keysym, char in keys:
+                    with self.subTest(key=keysym):
+                        self.press(app.btn_feedback, keysym, char)
+                app.root.update()
+            opened.assert_not_called()
+            messagebox.showwarning.assert_not_called()
+            self.assertEqual(app.txt_log.get("1.0", "end").strip(), "")
+        self.assertEqual(net, [])
+
+    def test_focus_shows_without_changing_the_size(self) -> None:
+        self.fresh_settings()
+        app = self.make(1.0)
+        app.root.update()
+        style = ttk.Style(app.root)
+        name = str(app.btn_feedback.cget("style"))
+        accent, bg = theme.PALETTE["accent"], theme.PALETTE["bg"]
+        self.assertEqual(style.lookup(name, "bordercolor", ["!focus"]), bg)             # no frame while not focused
+        for state in (["focus"], ["focus", "active"], ["focus", "pressed"]):
+            with self.subTest(state=state):
+                self.assertEqual(style.lookup(name, "bordercolor", state), accent)
+        self.assertGreaterEqual(theme.contrast_ratio(accent, bg), 3.0)                   # a frame that can be seen
+        before = (app.btn_feedback.winfo_reqwidth(), app.btn_feedback.winfo_reqheight(),
+                  app.btn_feedback.winfo_width(), app.btn_feedback.winfo_height())
+        for on in (True, False, True):
+            app.btn_feedback.state(["focus"] if on else ["!focus"])
+            app.root.update()
+            self.assertEqual(app.btn_feedback.instate(["focus"]), on)
+            self.assertEqual((app.btn_feedback.winfo_reqwidth(), app.btn_feedback.winfo_reqheight(),
+                              app.btn_feedback.winfo_width(), app.btn_feedback.winfo_height()), before)
+        app.btn_feedback.state(["!focus"])
+        self.assertEqual(style.lookup("TButton", "bordercolor", ["focus"]), style.lookup("TButton", "bordercolor"))  # others as before
+
+    # ------------------------------------------------------------ send feedback: tooltip
+    TIPS = {"ko": bytes.fromhex("ec958820eb9098eb8a9420eab283c2b7ebb688ed8eb8ed959c20eab283c2b7ebb094eb9dbceb8a9420eab8b0"
+                                "eb8aa5ec9d8420ec958ceba0a420eca3bcec84b8ec9a9428ebb88ceb9dbcec9ab0eca080eab08020ec97b4eb"
+                                "a6bdeb8b88eb8ba429").decode(),
+            "en": "Tell us what's broken or missing (opens your browser)",
+            "ja": bytes.fromhex("e4b88de585b7e59088e383bbe38194e8a681e69c9be38292e3818ae79fa5e38289e3819be3818fe381a0e381"
+                                "95e38184efbc88e38396e383a9e382a6e382b6e3818ce9968be3818de381bee38199efbc89").decode(),
+            "zh-CN": bytes.fromhex("e5918ae8af89e68891e4bbace997aee9a298e68896e5bbbae8aeaeefbc88e5b086e68993e5bc80e6b58f"
+                                   "e8a788e599a8efbc89").decode()}
+
+    def wait(self, app, ms: int) -> None:
+        """Let the real event loop run for `ms` milliseconds."""
+        app.root.after(ms, app.root.quit)
+        app.root.mainloop()
+        app.root.update()
+
+    def hover(self, app, ms: int | None = None) -> None:
+        app.btn_feedback.event_generate("<Enter>")
+        self.wait(app, app.tip_feedback.DELAY_MS + 250 if ms is None else ms)
+
+    def tip_box(self, app) -> tuple[int, int, int, int]:
+        tip = app.tip_feedback.tip
+        tip.update_idletasks()
+        return tip.winfo_rootx(), tip.winfo_rooty(), tip.winfo_rootx() + tip.winfo_width(), tip.winfo_rooty() + tip.winfo_height()
+
+    def test_tooltip_words_in_every_language(self) -> None:
+        for lang in i18n.LANGS:
+            with self.subTest(lang=lang):
+                with open(os.path.join(ROOT, "lang", f"{lang}.json"), encoding="utf-8") as f:
+                    import json
+
+                    words = json.load(f)["tip_feedback"]
+                self.assertEqual(words, self.TIPS[lang])
+                self.assertTrue(words.strip())
+        self.assertEqual(len(set(self.TIPS.values())), 4)
+        self.assertEqual(set(self.TIPS), set(i18n.LANGS))
+
+    def test_tooltip_shows_after_a_short_rest_and_goes_when_the_pointer_leaves(self) -> None:
+        self.fresh_settings()
+        app = self.make(1.0)
+        app.root.update()
+        tip = app.tip_feedback
+        self.assertTrue(400 <= tip.DELAY_MS <= 500)
+        self.assertFalse(tip.shown())
+        app.btn_feedback.event_generate("<Enter>")
+        self.wait(app, 250)
+        self.assertFalse(tip.shown())                                    # not yet
+        self.wait(app, tip.DELAY_MS)
+        self.assertTrue(tip.shown())
+        self.assertTrue(tip.tip.winfo_ismapped())
+        self.assertEqual(tip.label.cget("text"), self.TIPS["en"])
+        self.assertEqual(tip.tip.master, app.btn_feedback)               # goes with the window
+        self.assertTrue(tip.tip.overrideredirect())                      # no title bar, no taskbar entry
+        app.btn_feedback.event_generate("<Leave>")
+        app.root.update()
+        self.assertFalse(tip.shown())
+        self.wait(app, tip.DELAY_MS + 200)
+        self.assertFalse(tip.shown())                                    # and does not come back by itself
+        self.hover(app)
+        self.assertTrue(tip.shown())                                     # again on the next visit
+
+    def test_tooltip_does_not_show_when_the_pointer_passes_quickly(self) -> None:
+        self.fresh_settings()
+        app = self.make(1.0)
+        app.root.update()
+        tip = app.tip_feedback
+        for stay in (0, 50, 200, tip.DELAY_MS - 150):
+            with self.subTest(stay=stay):
+                app.btn_feedback.event_generate("<Enter>")
+                self.wait(app, max(1, stay))
+                app.btn_feedback.event_generate("<Leave>")
+                self.wait(app, tip.DELAY_MS + 200)
+                self.assertFalse(tip.shown())
+                self.assertIsNone(tip._job)
+        for _ in range(5):                                               # in and out many times: still at most one note
+            app.btn_feedback.event_generate("<Enter>")
+            self.wait(app, 30)
+        self.wait(app, tip.DELAY_MS + 200)
+        self.assertTrue(tip.shown())
+        tops = [w for w in app.btn_feedback.winfo_children() if isinstance(w, tk.Toplevel)]
+        self.assertEqual(len(tops), 1)
+
+    def test_clicking_hides_the_tooltip_and_opens_the_page_once(self) -> None:
+        stack, net = self.no_network()
+        with stack:
+            self.fresh_settings()
+            app = self.make(1.0)
+            app.root.update()
+            with mock.patch("webbrowser.open", return_value=True) as opened:
+                self.hover(app)
+                self.assertTrue(app.tip_feedback.shown())
+                app.btn_feedback.event_generate("<ButtonPress-1>")
+                app.root.update()
+                self.assertFalse(app.tip_feedback.shown())
+                app.btn_feedback.event_generate("<ButtonRelease-1>")
+                app.root.update()
+                self.wait(app, app.tip_feedback.DELAY_MS + 200)
+                self.assertFalse(app.tip_feedback.shown())               # the click does not bring it back
+            opened.assert_called_once_with(self.expected_feedback_url("en"))
+        self.assertEqual(net, [])
+
+    def test_tooltip_follows_a_language_switch_while_it_is_up(self) -> None:
+        self.fresh_settings()
+        app = self.make(1.0)
+        app.root.update()
+        self.hover(app)
+        seen = []
+        for code in ("ko", "ja", "zh-CN", "en", "ko"):
+            self.switch_lang(app, code)
+            app.root.update()
+            self.assertTrue(app.tip_feedback.shown())
+            seen.append(app.tip_feedback.label.cget("text"))
+            self.assertEqual(seen[-1], self.TIPS[code])
+            self.assertEqual(seen[-1], i18n.t("tip_feedback"))
+        self.assertEqual(len(set(seen)), 4)
+        app.btn_feedback.event_generate("<Leave>")
+        self.switch_lang(app, "en")                                     # switching with no note up shows none
+        app.root.update()
+        self.assertFalse(app.tip_feedback.shown())
+        i18n.set_lang("en", persist=False)
+
+    def test_tooltip_stays_inside_the_window_and_the_screen(self) -> None:
+        """The smallest window (the English subtitle is the one that gets cut there) at the
+        left and the right edge of the screen, and half off the screen, in every language."""
+        self.fresh_settings()
+        for scale in (1.0, 1.5):
+            app = self.make(scale)
+            if not self.screen_allows(app, scale):
+                continue
+            root = app.root
+            width, height = root.minsize()
+            screen_w, screen_h = root.winfo_screenwidth(), root.winfo_screenheight()
+            places = {"left edge": f"+0+40", "right edge": f"-0+40", "past the right edge": f"+{screen_w - width + 160}+40"}
+            for place, position in places.items():
+                root.geometry(f"{width}x{height}{position}")
+                root.update()
+                for lang in ("en",) + tuple(c for c in i18n.LANGS if c != "en"):
+                    with self.subTest(scale=scale, place=place, lang=lang):
+                        self.switch_lang(app, lang)
+                        app.tip_feedback.hide()
+                        self.hover(app)
+                        self.assertTrue(app.tip_feedback.shown())
+                        left, top, right, bottom = self.tip_box(app)
+                        win = (root.winfo_rootx(), root.winfo_rooty(), root.winfo_rootx() + root.winfo_width(),
+                               root.winfo_rooty() + root.winfo_height())
+                        self.assertGreaterEqual(left, max(win[0], 0))
+                        self.assertLessEqual(right, min(win[2], screen_w))
+                        self.assertGreaterEqual(top, max(win[1], 0))
+                        self.assertLessEqual(bottom, min(win[3], screen_h))
+                        self.assertGreater(right - left, 20)
+                        label = app.tip_feedback.label
+                        self.assertGreaterEqual(label.winfo_width() + 1, label.winfo_reqwidth())   # its words are not cut
+                        button_bottom = app.btn_feedback.winfo_rooty() + app.btn_feedback.winfo_height()
+                        self.assertGreaterEqual(top, button_bottom)                  # under the button, not over it
+            root.destroy()
+            self.apps.remove(app)
+        i18n.set_lang("en", persist=False)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

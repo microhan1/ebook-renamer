@@ -47,10 +47,21 @@ class AddressTests(unittest.TestCase):
             with self.subTest(lang=lang):
                 self.assertEqual(url(lang), address)
 
-    def test_unknown_or_missing_language_gets_the_korean_page(self) -> None:
-        for lang in (None, "", "fr", "zh-TW", "zh", "english", " en", 7, ["en"]):
+    def test_unknown_language_gets_the_english_page(self) -> None:
+        for lang in ("fr", "zh-TW", "zh", "english", " en", "xx", "de", "pt_BR", "kok"):    # kok: Konkani, not Korean
             with self.subTest(lang=lang):
-                self.assertEqual(url(lang), f"{KO_PAGE}{QUERY}&v=0.2.4#feedback")
+                self.assertEqual(url(lang), f"{EN_PAGE}{QUERY}&v=0.2.4#feedback")
+
+    def test_missing_language_follows_the_default_screen_language(self) -> None:
+        self.assertEqual(uc.DEFAULT_LANG, i18n.DEFAULT_LANG)
+        default = url(i18n.DEFAULT_LANG)
+        self.assertEqual(default, f"{EN_PAGE}{QUERY}&v=0.2.4#feedback")
+        for lang in (None, "", " ", "\t\n", 7, ["en"]):
+            with self.subTest(lang=lang):
+                self.assertEqual(url(lang), default)
+        with mock.patch.object(uc, "DEFAULT_LANG", "ko"):           # it is the default that decides, not a fixed page
+            self.assertEqual(url(None), f"{KO_PAGE}{QUERY}&v=0.2.4#feedback")
+            self.assertEqual(url("en"), f"{EN_PAGE}{QUERY}&v=0.2.4#feedback")
 
     def test_language_code_case_does_not_matter(self) -> None:
         for lang in ("EN", "En", "JA", "zh-cn", "ZH-CN", "Zh-Cn"):
@@ -79,6 +90,103 @@ class AddressTests(unittest.TestCase):
         address = uc.feedback_url(uc.SLUG, __version__, "ko")
         self.assertEqual(address, f"{KO_PAGE}{QUERY}&v={__version__}#feedback")
         self.assertEqual(uc.SLUG, "ebookrenamer")
+
+
+class PageLanguageTests(unittest.TestCase):
+    """One rule picks the page for [Send feedback] and for the notice's [Update]: a code whose
+    first part is ko reads the Korean page, every other code the English one, and no code at
+    all the default screen language's."""
+    KO_CODES = ("ko", "KO", "Ko", "ko-KR", "ko_KR", "ko-kr", "KO_kr", " ko ", "ko\n")
+    EN_CODES = ("en", "ja", "zh", "zh-CN", "zh_CN", "zh-TW", "fr", "de", "EN", "en-US", "xx", "JA", "zh-cn",
+                "english", "korean", "kok", "k", "o", "-ko", "_ko", "x-ko", "ko?", "en-KO")
+    NO_CODE = (None, "", " ", "\t\n", 0, 7, 1.5, ["ko"], ("ko",), {"ko": 1}, b"ko", True)
+
+    def info(self, url_en: str = EN_PAGE + "?utm_source=app"):
+        return uc.UpdateInfo("9.9.9", "0.2.4", KO_PAGE + "?utm_source=app", url_en)
+
+    def test_korean_codes(self) -> None:
+        for lang in self.KO_CODES:
+            with self.subTest(lang=lang):
+                self.assertEqual(uc.page_lang(lang), "ko")
+                self.assertEqual(url(lang), f"{KO_PAGE}{QUERY}&v=0.2.4#feedback")
+                self.assertEqual(uc.page_for(self.info(), lang), KO_PAGE + "?utm_source=app")
+
+    def test_every_other_code_listed_or_not(self) -> None:
+        for lang in self.EN_CODES:
+            with self.subTest(lang=lang):
+                self.assertEqual(uc.page_lang(lang), "en")
+                self.assertEqual(url(lang), f"{EN_PAGE}{QUERY}&v=0.2.4#feedback")
+                self.assertEqual(uc.page_for(self.info(), lang), EN_PAGE + "?utm_source=app")
+
+    def test_no_code_is_the_default_screen_language(self) -> None:
+        expected = uc.page_lang(i18n.DEFAULT_LANG)
+        for lang in self.NO_CODE:
+            with self.subTest(lang=lang):
+                self.assertEqual(uc.page_lang(lang), expected)
+                self.assertEqual(url(lang), url(i18n.DEFAULT_LANG))
+                self.assertEqual(uc.page_for(self.info(), lang), uc.page_for(self.info(), i18n.DEFAULT_LANG))
+
+    def test_the_screen_languages_of_the_tool(self) -> None:
+        self.assertEqual({lang: uc.page_lang(lang) for lang in i18n.LANGS},
+                         {"ko": "ko", "en": "en", "ja": "en", "zh-CN": "en"})
+
+    def test_feedback_and_update_always_agree(self) -> None:
+        for lang in self.KO_CODES + self.EN_CODES + self.NO_CODE:
+            with self.subTest(lang=lang):
+                feedback_en = urllib.parse.urlsplit(url(lang)).path.startswith("/en/")
+                update_en = urllib.parse.urlsplit(uc.page_for(self.info(), lang)).path.startswith("/en/")
+                self.assertEqual(feedback_en, update_en)
+                self.assertEqual(feedback_en, uc.page_lang(lang) == "en")
+
+    def test_update_without_an_english_page_stays_on_the_korean_one(self) -> None:
+        for url_en in ("", "https://evil.example/en/tools/ebookrenamer", None):
+            for lang in ("en", "ja", "fr", None):
+                with self.subTest(url_en=url_en, lang=lang):
+                    self.assertEqual(uc.page_for(self.info(url_en), lang), KO_PAGE + "?utm_source=app")
+
+    def test_the_answer_is_one_of_two_pages(self) -> None:
+        odd = ["\x00", "ko\x00", chr(0x00C0), HANGUL, "ko-" + HANGUL, "a" * 5000, "ko" + "-x" * 1000]
+        for lang in odd:
+            with self.subTest(lang=lang[:20]):
+                self.assertIn(uc.page_lang(lang), ("ko", "en"))
+                self.assertTrue(url(lang).startswith((KO_PAGE + "?", EN_PAGE + "?")))
+
+
+class ReadmeLinkTests(unittest.TestCase):
+    """Each README sends readers to the feedback box of the page in their language (the
+    Japanese and Chinese ones to the English page), written as [words](address) so that
+    no bracket, particle or full-width comma is taken into the link."""
+    EXPECTED = {"README.md": KO_PAGE + "#feedback", "README.en.md": EN_PAGE + "#feedback",
+                "README.ja.md": EN_PAGE + "#feedback", "README.zh-CN.md": EN_PAGE + "#feedback"}
+
+    def read(self, name: str) -> str:
+        with open(os.path.join(ROOT, name), encoding="utf-8") as f:
+            return f.read()
+
+    def test_each_readme_has_one_feedback_link_to_its_page(self) -> None:
+        import re
+
+        for name, expected in self.EXPECTED.items():
+            with self.subTest(readme=name):
+                text = self.read(name)
+                links = re.findall(r"https://chaekgalpi\.co\.kr/[^\s)]*#feedback", text)
+                self.assertEqual(links, [expected])
+
+    def test_every_site_address_sits_inside_a_markdown_link(self) -> None:
+        import re
+
+        for name in self.EXPECTED:
+            with self.subTest(readme=name):
+                text = self.read(name)
+                starts = [m.start() for m in re.finditer(r"https?://", text)]
+                self.assertTrue(starts)
+                for start in starts:
+                    self.assertEqual(text[start - 2:start], "](", f"{name}: a bare address at {start}")
+                    end = text.index(")", start)
+                    address = text[start:end]
+                    self.assertTrue(address.isascii(), f"{name}: {address!r}")
+                    self.assertNotIn(" ", address)
+                    self.assertNotRegex(address, r"[（），。、]")
 
 
 class VersionValueTests(unittest.TestCase):
@@ -134,8 +242,10 @@ class NoNetworkTests(unittest.TestCase):
                 mock.patch.object(socket, "create_connection", refuse), \
                 mock.patch.object(socket, "getaddrinfo", refuse), \
                 mock.patch("urllib.request.urlopen", refuse):
-            for lang in i18n.LANGS:
+            for lang in i18n.LANGS + (None, "fr", "ko-KR"):
                 url(lang, __version__)
+                uc.page_lang(lang)
+                uc.page_for(uc.UpdateInfo("9.9.9", __version__, KO_PAGE, EN_PAGE), lang)
         self.assertEqual(calls, [])
 
 

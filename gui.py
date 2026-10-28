@@ -18,7 +18,7 @@ import update_check
 from i18n import t
 from namer import Item, Options
 from version import __version__
-from widgets import DropZone, draw_empty_art
+from widgets import DropZone, Tooltip, draw_empty_art
 
 try:
     from tkinterdnd2 import DND_FILES, TkinterDnD
@@ -156,6 +156,9 @@ class App:
                                       "btn_feedback")
         # on a line of its own under the check box: beside it, the header no longer fit the smallest window
         self.btn_feedback.grid(row=1, column=0, columnspan=4, sticky="e")
+        for key in ("<Return>", "<KP_Enter>"):                 # Space is ttk's own; Enter opens it too, like a link
+            self.btn_feedback.bind(key, lambda e: self.btn_feedback.invoke())
+        self.tip_feedback = Tooltip(self.btn_feedback, th, lambda: t("tip_feedback"))
 
         # ---- drop zone with the add / clear buttons inside
         zone_row = ttk.Frame(root, padding=(pad, px(12), pad, 0))
@@ -304,6 +307,7 @@ class App:
             self.tree.heading(col, text=t(f"col_{col}"), anchor="w")
         self.zone.set_text(t("drop_hint"), t("drop_sub"), t("drop_release"))
         self.lbl_empty.configure(text=t("empty_table"))
+        self.tip_feedback.refresh()
         self._refresh_rows()
         self._update_count()
         if self._status_key:

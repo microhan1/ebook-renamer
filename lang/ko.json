@@ -11,6 +11,7 @@
   "btn_update": "업데이트",
   "btn_later": "다음에",
   "btn_feedback": "의견 보내기",
+  "tip_feedback": "안 되는 것·불편한 것·바라는 기능을 알려 주세요(브라우저가 열립니다)",
   "err_feedback_open": "브라우저를 열지 못했습니다. 아래 주소를 복사해 브라우저 주소 창에 붙여 넣어 주세요:\n{url}",
   "btn_add_files": "파일 추가",
   "btn_add_folder": "폴더 추가",
