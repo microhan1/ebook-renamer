@@ -13,6 +13,7 @@ import sys
 import i18n
 import meta
 import namer
+import splash
 import undo
 from i18n import t
 from version import __version__
@@ -155,7 +156,11 @@ def main(argv: list[str] | None = None) -> int:
             except Exception:
                 pass
     i18n.init(_preselect_lang(argv))
-    args = build_parser().parse_args(argv)
+    try:
+        args = build_parser().parse_args(argv)
+    except SystemExit:              # --help, --version or a bad option: the text goes to the console
+        splash.close()
+        raise
     if args.lang:
         i18n.set_lang(args.lang, persist=False)
     # A windowed exe has no console, so dropping files on it opens the GUI
@@ -166,6 +171,7 @@ def main(argv: list[str] | None = None) -> int:
 
         gui.launch(args.inputs or None)
         return 0
+    splash.close()                  # the window would have closed it; the CLI has nothing to wait for
     return run_cli(args)
 
 

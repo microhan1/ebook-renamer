@@ -1,5 +1,6 @@
 @echo off
 rem Build ebook-renamer.exe (single file, no console) with PyInstaller.
+rem --splash shows assets\splash.png while the exe unpacks (gui.launch closes it once the window is drawn).
 rem Usage: build.bat          -> dist\ebook-renamer.exe
 setlocal
 cd /d "%~dp0"
@@ -10,6 +11,7 @@ python -m pip install -r requirements.txt
 python -m PyInstaller --noconfirm --clean --onefile --windowed ^
   --name ebook-renamer ^
   --icon assets\icon.ico ^
+  --splash assets\splash.png ^
   --add-data "lang;lang" ^
   --collect-data tkinterdnd2 ^
   --exclude-module numpy --exclude-module PIL --exclude-module pillow_heif --exclude-module lxml ^

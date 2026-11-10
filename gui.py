@@ -12,6 +12,7 @@ from tkinter import filedialog, messagebox, ttk
 import i18n
 import meta
 import namer
+import splash
 import theme
 import undo
 import update_check
@@ -912,4 +913,10 @@ class App:
 
 
 def launch(initial_paths: list[str] | None = None) -> None:
-    App(initial_paths).mainloop()
+    try:
+        app = App(initial_paths)
+        app.root.update()               # draw the window first, then take the splash picture down
+    finally:
+        splash.close()                  # even if the window failed: the error must not hide behind the picture
+    threading.Thread(target=meta.preload, daemon=True).start()
+    app.mainloop()

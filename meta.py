@@ -217,6 +217,16 @@ def _pymupdf():
 _quiet = False
 
 
+def preload() -> None:
+    """Import PyMuPDF ahead of the first PDF; in the exe that import takes about a second.
+    Meant for a background thread once the window is up. A failure is ignored here and shows
+    up as "open_failed" when a PDF is actually read, exactly as without the preload."""
+    try:
+        _pymupdf()
+    except Exception:
+        pass
+
+
 def read_pdf(path: str) -> Meta:
     global _quiet
     pymupdf = _pymupdf()
